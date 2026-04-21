@@ -134,5 +134,5 @@ export type { InstallationResult, KuboVersion, KuboInstallerConfig } from './kub
 export { InstallationStatus } from './kubo-installer.js';
 
 // 版本信息
-export const VERSION = '0.3.0';
+export const VERSION = '0.1.1';
 export const DESCRIPTION = 'DIAP TypeScript SDK - Decentralized Intelligent Agent Protocol';
