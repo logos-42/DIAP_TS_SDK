@@ -52,13 +52,14 @@ export interface Service {
 
 /**
  * 加密的 PeerID
+ * 使用 Ed25519 私钥派生 AES-256 密钥加密 PeerID
  */
 export interface EncryptedPeerID {
-  /** AES-256-GCM 加密的 PeerID */
+  /** AES-256-GCM 加密的 PeerID 字节 */
   ciphertext: Uint8Array;
-  /** 12 bytes nonce */
+  /** 12 bytes AES-GCM nonce */
   nonce: Uint8Array;
-  /** Ed25519 签名 */
+  /** Ed25519 签名（对 ciphertext + nonce 的签名） */
   signature: Uint8Array;
   /** 加密方法标识 */
   method: string;

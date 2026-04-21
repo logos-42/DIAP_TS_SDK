@@ -19,6 +19,16 @@
 npm install @diap/sdk
 ```
 
+### Windows 用户注意事项
+
+如果在 Windows 上遇到安装问题，请参考 [INSTALL.md](./INSTALL.md) 获取详细的解决方案。
+
+推荐使用以下命令安装：
+
+```bash
+npm install --legacy-peer-deps
+```
+
 ## 快速开始
 
 ```typescript

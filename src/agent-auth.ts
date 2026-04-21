@@ -1,12 +1,14 @@
 /**
  * 智能体认证管理器
  * 提供统一的智能体认证 API
+ * 基于 Rust SDK 的实现逻辑
  */
 
 import type {
   AgentInfo,
   IdentityRegistration,
   IdentityVerification,
+  ServiceInfo,
 } from './identity-manager.js';
 import type { KeyPair } from './types/key.js';
 import { IdentityManager } from './identity-manager.js';
@@ -47,14 +49,16 @@ export interface BatchAuthResult {
 export class AgentAuthManager {
   private identityManager: IdentityManager;
   private ipfsClient: IpfsClient;
-  private zkpManager?: UniversalNoirManager;
 
   /**
    * 创建新的认证管理器（使用公共 IPFS）
    */
   static async new(): Promise<AgentAuthManager> {
-    const ipfsClient = await IpfsClient.newPublicOnly();
+    logger.info('🚀 初始化智能体认证管理器（轻量级版本）');
+
+    const ipfsClient = await IpfsClient.newPublicOnly(30);
     const manager = new AgentAuthManager(ipfsClient);
+
     return manager;
   }
 
@@ -65,8 +69,11 @@ export class AgentAuthManager {
     apiUrl: string,
     gatewayUrl: string
   ): Promise<AgentAuthManager> {
-    const ipfsClient = await IpfsClient.newWithRemoteNode(apiUrl, gatewayUrl);
+    logger.info('🚀 初始化智能体认证管理器（使用远程IPFS）');
+
+    const ipfsClient = await IpfsClient.newWithRemoteNode(apiUrl, gatewayUrl, 30);
     const manager = new AgentAuthManager(ipfsClient);
+
     return manager;
   }
 
@@ -78,29 +85,32 @@ export class AgentAuthManager {
   /**
    * 创建智能体
    */
-  createAgent(name: string, email?: string): {
+  createAgent(name: string, _email?: string): {
     agentInfo: AgentInfo;
     keypair: KeyPair;
     peerId: string;
   } {
-    // 生成密钥对
+    logger.info(`🤖 创建智能体: ${name}`);
+
     const keypair = KeyManager.generate();
 
-    // 生成 PeerID（简化版本：使用公钥的哈希）
     const peerIdBytes = generateRandomBytes(32);
     const peerId = Buffer.from(peerIdBytes).toString('base64url');
 
-    // 创建智能体信息
     const agentInfo: AgentInfo = {
       name,
       services: [
         {
-          serviceType: 'AgentService',
-          endpoint: email ? { email } : {},
+          serviceType: 'messaging',
+          endpoint: `https://${name.toLowerCase()}.example.com/messaging`,
         },
       ],
-      description: `Agent: ${name}`,
+      description: `${name}智能体`,
+      tags: ['agent', name.toLowerCase()],
     };
+
+    logger.info(`✅ 智能体创建成功: ${name}`);
+    logger.info(`   DID: ${keypair.did}`);
 
     return {
       agentInfo,
@@ -117,7 +127,14 @@ export class AgentAuthManager {
     keypair: KeyPair,
     peerId: string
   ): Promise<IdentityRegistration> {
-    return await this.identityManager.registerIdentity(agentInfo, keypair, peerId);
+    logger.info(`📝 注册智能体身份: ${agentInfo.name}`);
+
+    const registration = await this.identityManager.registerIdentity(agentInfo, keypair, peerId);
+
+    logger.info('✅ 身份注册成功');
+    logger.info(`   CID: ${registration.cid}`);
+
+    return registration;
   }
 
   /**
@@ -127,15 +144,16 @@ export class AgentAuthManager {
     const startTime = Date.now();
 
     try {
-      // 获取 DID 文档
+      logger.info('🔐 生成身份证明');
+
+      const timestamp = Math.floor(Date.now() / 1000);
+      const nonceStr = `proof_${keypair.did}_${timestamp}`;
+      const nonce = new TextEncoder().encode(nonceStr);
+
       const didDocument = await this.ipfsClient.get(cid);
       const parsedDoc = JSON.parse(didDocument);
 
-      // 生成 nonce
-      const nonce = generateRandomBytes(32);
-
-      // 生成绑定证明
-      const proof = await this.identityManager.generateBindingProof(
+      const proof = this.identityManager.generateBindingProof(
         keypair,
         parsedDoc,
         cid,
@@ -144,12 +162,15 @@ export class AgentAuthManager {
 
       const processingTime = Date.now() - startTime;
 
+      logger.info('✅ 身份证明生成成功');
+      logger.info(`   处理时间: ${processingTime}ms`);
+
       return {
         success: true,
         agentId: parsedDoc.id,
-        proof,
-        verificationDetails: ['Proof generated successfully'],
-        timestamp: Date.now(),
+        proof: proof as any,
+        verificationDetails: ['✓ 证明生成成功'],
+        timestamp,
         processingTimeMs: processingTime,
       };
     } catch (error) {
@@ -158,7 +179,7 @@ export class AgentAuthManager {
         success: false,
         agentId: '',
         verificationDetails: [`Failed to generate proof: ${error}`],
-        timestamp: Date.now(),
+        timestamp: Math.floor(Date.now() / 1000),
         processingTimeMs: processingTime,
       };
     }
@@ -171,10 +192,12 @@ export class AgentAuthManager {
     const startTime = Date.now();
 
     try {
-      // 生成 nonce（实际应用中应该从验证请求中获取）
-      const nonce = generateRandomBytes(32);
+      logger.info('🔍 验证身份');
 
-      // 验证身份
+      const timestamp = Math.floor(Date.now() / 1000);
+      const nonceStr = `verify_${timestamp}`;
+      const nonce = new TextEncoder().encode(nonceStr);
+
       const verification = await this.identityManager.verifyIdentityWithZKP(
         cid,
         proof,
@@ -183,11 +206,15 @@ export class AgentAuthManager {
 
       const processingTime = Date.now() - startTime;
 
+      logger.info('✅ 身份验证完成');
+      logger.info(`   验证结果: ${verification.zkpVerified ? '通过' : '失败'}`);
+      logger.info(`   处理时间: ${processingTime}ms`);
+
       return {
         success: verification.zkpVerified,
         agentId: verification.did,
         verificationDetails: verification.verificationDetails,
-        timestamp: Date.now(),
+        timestamp,
         processingTimeMs: processingTime,
       };
     } catch (error) {
@@ -196,7 +223,7 @@ export class AgentAuthManager {
         success: false,
         agentId: '',
         verificationDetails: [`Verification failed: ${error}`],
-        timestamp: Date.now(),
+        timestamp: Math.floor(Date.now() / 1000),
         processingTimeMs: processingTime,
       };
     }
@@ -206,55 +233,68 @@ export class AgentAuthManager {
    * 双向认证
    */
   async mutualAuthentication(
-    aliceInfo: AgentInfo,
+    _aliceInfo: AgentInfo,
     aliceKeypair: KeyPair,
-    alicePeerId: string,
+    _alicePeerId: string,
     aliceCid: string,
-    bobInfo: AgentInfo,
+    _bobInfo: AgentInfo,
     bobKeypair: KeyPair,
-    bobPeerId: string,
+    _bobPeerId: string,
     bobCid: string
   ): Promise<[AuthResult, AuthResult, AuthResult, AuthResult]> {
-    // Alice -> Bob 认证
-    const aliceToBobProof = await this.generateProof(aliceKeypair, aliceCid);
-    const aliceToBobVerify = await this.verifyIdentity(bobCid, aliceToBobProof.proof!);
+    logger.info('🔄 开始双向认证流程');
 
-    // Bob -> Alice 认证
-    const bobToAliceProof = await this.generateProof(bobKeypair, bobCid);
-    const bobToAliceVerify = await this.verifyIdentity(aliceCid, bobToAliceProof.proof!);
+    const aliceProof = await this.generateProof(aliceKeypair, aliceCid);
+    const bobVerifyAlice = await this.verifyIdentity(aliceCid, aliceProof.proof!);
 
-    return [aliceToBobProof, aliceToBobVerify, bobToAliceProof, bobToAliceVerify];
+    const bobProof = await this.generateProof(bobKeypair, bobCid);
+    const aliceVerifyBob = await this.verifyIdentity(bobCid, bobProof.proof!);
+
+    logger.info('✅ 双向认证完成');
+    logger.info(`   Alice → Bob: ${bobVerifyAlice.success ? '✅' : '❌'}`);
+    logger.info(`   Bob → Alice: ${aliceVerifyBob.success ? '✅' : '❌'}`);
+
+    return [aliceProof, bobVerifyAlice, bobProof, aliceVerifyBob];
   }
 
   /**
    * 批量认证测试
    */
   async batchAuthenticationTest(
-    agentInfo: AgentInfo,
+    _agentInfo: AgentInfo,
     keypair: KeyPair,
-    peerId: string,
+    _peerId: string,
     cid: string,
     count: number
   ): Promise<BatchAuthResult> {
+    logger.info(`🔄 开始批量认证测试: ${count}次`);
+
     const startTime = Date.now();
     const results: AuthResult[] = [];
+    let successCount = 0;
 
     for (let i = 0; i < count; i++) {
-      const result = await this.generateProof(keypair, cid);
-      results.push(result);
+      logger.info(`   处理第${i + 1}个认证...`);
+
+      const proofResult = await this.generateProof(keypair, cid);
+      if (proofResult.success) {
+        successCount++;
+      }
+
+      results.push(proofResult);
     }
 
     const totalTime = Date.now() - startTime;
-    const successCount = results.filter((r) => r.success).length;
     const failureCount = count - successCount;
+    const successRate = (successCount / count) * 100;
 
     return {
       totalCount: count,
       successCount,
       failureCount,
-      successRate: successCount / count,
+      successRate,
       totalTimeMs: totalTime,
-      averageTimeMs: totalTime / count,
+      averageTimeMs: Math.floor(totalTime / count),
       results,
     };
   }

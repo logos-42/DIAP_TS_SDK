@@ -1,6 +1,6 @@
 /**
  * 通用 ZKP 管理器
- * 统一接口，支持多种后端（o1js, simplified）
+ * 统一接口，支持多种后端（snarkjs, simplified）
  */
 
 import type {
@@ -8,9 +8,11 @@ import type {
   NoirProofResult,
   NoirVerificationResult,
   NoirBackend,
+  BackendInfo,
+  PerformanceStats,
 } from '../types/zkp.js';
 import { ZKPError } from '../types/errors.js';
-import { O1JSBackend } from './o1js-backend.js';
+import { SnarkjsBackend } from './snarkjs-backend.js';
 import { SimplifiedBackend } from './simplified-backend.js';
 import { logger } from '../utils/logger.js';
 
@@ -19,7 +21,7 @@ import { logger } from '../utils/logger.js';
  */
 export class UniversalNoirManager {
   private backend: NoirBackend;
-  private o1jsBackend?: O1JSBackend;
+  private snarkjsBackend?: SnarkjsBackend;
   private simplifiedBackend: SimplifiedBackend;
 
   /**
@@ -27,22 +29,18 @@ export class UniversalNoirManager {
    */
   static async new(): Promise<UniversalNoirManager> {
     const manager = new UniversalNoirManager();
-    
-    // 尝试初始化 o1js 后端
+
     try {
-      const o1jsBackend = new O1JSBackend();
-      if (o1jsBackend.isAvailable()) {
-        await o1jsBackend.initialize();
-        manager.backend = NoirBackend.O1JS;
-        manager.o1jsBackend = o1jsBackend;
-        logger.info('Using o1js backend for ZKP');
-        return manager;
-      }
+      const snarkjsBackend = new SnarkjsBackend();
+      await snarkjsBackend.initialize();
+      manager.backend = NoirBackend.SNARKJS_GROTH16;
+      manager.snarkjsBackend = snarkjsBackend;
+      logger.info('Using snarkjs backend for ZKP');
+      return manager;
     } catch (error) {
-      logger.warn('o1js backend not available, using simplified backend', { error });
+      logger.warn('snarkjs backend not available, using simplified backend', { error });
     }
 
-    // 回退到简化后端
     manager.backend = NoirBackend.SIMPLIFIED;
     manager.simplifiedBackend = new SimplifiedBackend();
     logger.info('Using simplified backend for ZKP');
@@ -54,19 +52,16 @@ export class UniversalNoirManager {
    */
   static async withBackend(backend: NoirBackend): Promise<UniversalNoirManager> {
     const manager = new UniversalNoirManager();
-    
-    if (backend === NoirBackend.O1JS) {
+
+    if (backend === NoirBackend.SNARKJS_GROTH16 || backend === NoirBackend.SNARKJS_PLONK) {
       try {
-        const o1jsBackend = new O1JSBackend();
-        if (o1jsBackend.isAvailable()) {
-          await o1jsBackend.initialize();
-          manager.backend = NoirBackend.O1JS;
-          manager.o1jsBackend = o1jsBackend;
-          return manager;
-        }
-        throw new ZKPError('o1js backend not available');
+        const snarkjsBackend = new SnarkjsBackend();
+        await snarkjsBackend.initialize();
+        manager.backend = backend;
+        manager.snarkjsBackend = snarkjsBackend;
+        return manager;
       } catch (error) {
-        throw new ZKPError('Failed to initialize o1js backend', { originalError: error });
+        throw new ZKPError('Failed to initialize snarkjs backend', { originalError: error });
       }
     } else {
       manager.backend = NoirBackend.SIMPLIFIED;
@@ -77,6 +72,7 @@ export class UniversalNoirManager {
 
   private constructor() {
     this.simplifiedBackend = new SimplifiedBackend();
+    this.backend = NoirBackend.SIMPLIFIED;
   }
 
   /**
@@ -84,20 +80,14 @@ export class UniversalNoirManager {
    */
   async generateProof(inputs: NoirProverInputs): Promise<NoirProofResult> {
     try {
-      if (this.backend === NoirBackend.O1JS && this.o1jsBackend) {
-        return await this.o1jsBackend.generateProof(inputs);
+      if ((this.backend === NoirBackend.SNARKJS_GROTH16 || this.backend === NoirBackend.SNARKJS_PLONK) && this.snarkjsBackend) {
+        return await this.snarkjsBackend.generateProof(inputs);
       } else {
         return await this.simplifiedBackend.generateProof(inputs);
       }
     } catch (error) {
-      // 如果 o1js 失败，回退到简化后端
-      if (this.backend === NoirBackend.O1JS && this.o1jsBackend) {
-        logger.warn('o1js proof generation failed, falling back to simplified backend', {
-          error,
-        });
-        return await this.simplifiedBackend.generateProof(inputs);
-      }
-      throw new ZKPError('Failed to generate proof', { originalError: error });
+      logger.warn('Proof generation failed, falling back to simplified backend', { error });
+      return await this.simplifiedBackend.generateProof(inputs);
     }
   }
 
@@ -109,35 +99,29 @@ export class UniversalNoirManager {
     publicInputs: Uint8Array
   ): Promise<NoirVerificationResult> {
     try {
-      if (this.backend === NoirBackend.O1JS && this.o1jsBackend) {
-        return await this.o1jsBackend.verifyProof(proof, publicInputs);
+      if ((this.backend === NoirBackend.SNARKJS_GROTH16 || this.backend === NoirBackend.SNARKJS_PLONK) && this.snarkjsBackend) {
+        return await this.snarkjsBackend.verifyProof(proof, publicInputs);
       } else {
         return await this.simplifiedBackend.verifyProof(proof, publicInputs);
       }
     } catch (error) {
-      // 如果 o1js 失败，回退到简化后端
-      if (this.backend === NoirBackend.O1JS && this.o1jsBackend) {
-        logger.warn('o1js proof verification failed, falling back to simplified backend', {
-          error,
-        });
-        return await this.simplifiedBackend.verifyProof(proof, publicInputs);
-      }
-      throw new ZKPError('Failed to verify proof', { originalError: error });
+      logger.warn('Proof verification failed, falling back to simplified backend', { error });
+      return await this.simplifiedBackend.verifyProof(proof, publicInputs);
     }
   }
 
   /**
    * 获取后端信息
    */
-  getBackendInfo(): { backend: NoirBackend; isAvailable: boolean } {
-    if (this.backend === NoirBackend.O1JS && this.o1jsBackend) {
+  getBackendInfo(): BackendInfo {
+    if ((this.backend === NoirBackend.SNARKJS_GROTH16 || this.backend === NoirBackend.SNARKJS_PLONK) && this.snarkjsBackend) {
       return {
-        backend: NoirBackend.O1JS,
-        isAvailable: this.o1jsBackend.isAvailable(),
+        backendType: this.backend,
+        isAvailable: this.snarkjsBackend.isAvailable(),
       };
     } else {
       return {
-        backend: NoirBackend.SIMPLIFIED,
+        backendType: NoirBackend.SIMPLIFIED,
         isAvailable: this.simplifiedBackend.isAvailable(),
       };
     }
@@ -151,19 +135,16 @@ export class UniversalNoirManager {
       return;
     }
 
-    if (newBackend === NoirBackend.O1JS) {
+    if (newBackend === NoirBackend.SNARKJS_GROTH16 || newBackend === NoirBackend.SNARKJS_PLONK) {
       try {
-        const o1jsBackend = new O1JSBackend();
-        if (o1jsBackend.isAvailable()) {
-          await o1jsBackend.initialize();
-          this.backend = NoirBackend.O1JS;
-          this.o1jsBackend = o1jsBackend;
-          logger.info('Switched to o1js backend');
-          return;
-        }
-        throw new ZKPError('o1js backend not available');
+        const snarkjsBackend = new SnarkjsBackend();
+        await snarkjsBackend.initialize();
+        this.backend = newBackend;
+        this.snarkjsBackend = snarkjsBackend;
+        logger.info(`Switched to ${newBackend} backend`);
+        return;
       } catch (error) {
-        throw new ZKPError('Failed to switch to o1js backend', { originalError: error });
+        throw new ZKPError('Failed to switch to snarkjs backend', { originalError: error });
       }
     } else {
       this.backend = NoirBackend.SIMPLIFIED;
@@ -172,3 +153,8 @@ export class UniversalNoirManager {
     }
   }
 }
+
+/**
+ * @deprecated 使用 UniversalNoirManager
+ */
+export const NoirUniversalManager = UniversalNoirManager;

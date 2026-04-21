@@ -48,8 +48,39 @@ export interface NoirVerificationResult {
  * ZKP 后端类型
  */
 export enum NoirBackend {
-  /** o1js 后端 */
-  O1JS = 'o1js',
+  /** snarkjs Groth16 后端 */
+  SNARKJS_GROTH16 = 'snarkjs-groth16',
+  /** snarkjs PLONK 后端 */
+  SNARKJS_PLONK = 'snarkjs-plonk',
   /** 简化后端（用于测试和回退） */
   SIMPLIFIED = 'simplified',
+}
+
+/**
+ * 性能指标
+ */
+export interface PerformanceMetrics {
+  proofGenerationTimeMs: number;
+  proofVerificationTimeMs: number;
+  cacheHitRate: number;
+  totalProofsGenerated: number;
+  totalProofsVerified: number;
+}
+
+/**
+ * 后端信息
+ */
+export interface BackendInfo {
+  backendType: NoirBackend;
+  isAvailable: boolean;
+}
+
+/**
+ * 性能统计
+ */
+export interface PerformanceStats {
+  backendType: NoirBackend;
+  cacheEntries: number;
+  memoryUsageBytes: number;
+  isOptimized: boolean;
 }

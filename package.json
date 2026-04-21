@@ -1,6 +1,6 @@
 {
   "name": "@diap/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DIAP TypeScript SDK - Decentralized Intelligent Agent Protocol",
   "type": "module",
   "main": "dist/index.js",
@@ -30,7 +30,8 @@
     "ipfs",
     "zkp",
     "did",
-    "libp2p"
+    "hyperswarm",
+    "snarkjs"
   ],
   "author": "",
   "license": "MIT",
@@ -42,17 +43,15 @@
     "@noble/ed25519": "^2.0.0",
     "@noble/hashes": "^1.3.0",
     "bs58": "^5.0.0",
-    "helia": "^4.0.0",
-    "@helia/unixfs": "^3.0.0",
-    "@helia/json": "^3.0.0",
-    "libp2p": "^1.0.0",
-    "o1js": "^1.0.0",
-    "multiformats": "^13.0.0",
-    "winston": "^3.11.0"
+    "hyperswarm": "^2.4.0",
+    "snarkjs": "^4.22.0",
+    "winston": "^3.11.0",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@types/bs58": "^5.0.0",
+    "@types/node-fetch": "^2.6.9",
     "typescript": "^5.3.3",
     "vitest": "^1.0.4",
     "@vitest/coverage-v8": "^1.0.4",
