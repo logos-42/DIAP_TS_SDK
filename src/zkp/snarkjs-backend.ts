@@ -91,11 +91,11 @@ export class SnarkjsBackend {
   /**
    * 创建 Snarkjs 后端
    */
-  constructor(config: SnarkjsBackendConfig) {
-    this.config = config;
+  constructor(config?: SnarkjsBackendConfig) {
+    this.config = config || { wasmPath: '', zkeyPath: '' };
     logger.info('🔧 Snarkjs ZKP 后端已创建');
-    logger.info(`  WASM: ${config.wasmPath}`);
-    logger.info(`  zKey: ${config.zkeyPath}`);
+    logger.info(`  WASM: ${this.config.wasmPath}`);
+    logger.info(`  zKey: ${this.config.zkeyPath}`);
   }
 
   /**

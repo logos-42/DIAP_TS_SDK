@@ -3,7 +3,12 @@
  * 统一接口，支持多种后端（snarkjs, simplified）
  */
 
-import type { NoirProverInputs, NoirProofResult, NoirVerificationResult } from '../types/zkp.js';
+import type {
+  NoirProverInputs,
+  NoirProofResult,
+  NoirVerificationResult,
+  BackendInfo,
+} from '../types/zkp.js';
 import { NoirBackend } from '../types/zkp.js';
 import { ZKPError } from '../types/errors.js';
 import { SnarkjsBackend } from './snarkjs-backend.js';
@@ -25,7 +30,7 @@ export class UniversalNoirManager {
     const manager = new UniversalNoirManager();
 
     try {
-      const snarkjsBackend = new SnarkjsBackend({});
+      const snarkjsBackend = new SnarkjsBackend();
       manager.backend = NoirBackend.SNARKJS_GROTH16;
       manager.snarkjsBackend = snarkjsBackend;
       logger.info('Using snarkjs backend for ZKP');
@@ -78,7 +83,32 @@ export class UniversalNoirManager {
           this.backend === NoirBackend.SNARKJS_PLONK) &&
         this.snarkjsBackend
       ) {
-        return await this.snarkjsBackend.generateProof(inputs);
+        const snarkjsInputs = {
+          privateInputs: {
+            expectedDidHash: inputs.expectedDidHash,
+            publicKeyHash: inputs.publicKeyHash,
+            nonceHash: inputs.nonceHash,
+          },
+          publicInputs: {
+            expectedOutput: inputs.expectedOutput,
+          },
+        };
+        const snarkjsResult = await this.snarkjsBackend.generateProof(snarkjsInputs);
+        return {
+          proof: new Uint8Array(
+            JSON.stringify(snarkjsResult.proof)
+              .split('')
+              .map((c) => c.charCodeAt(0))
+          ),
+          publicInputs: new Uint8Array(
+            JSON.stringify(snarkjsResult.publicSignals)
+              .split('')
+              .map((c) => c.charCodeAt(0))
+          ),
+          circuitOutput: inputs.expectedOutput,
+          timestamp: new Date().toISOString(),
+          generationTimeMs: 0,
+        };
       } else {
         return await this.simplifiedBackend.generateProof(inputs);
       }
@@ -98,7 +128,15 @@ export class UniversalNoirManager {
           this.backend === NoirBackend.SNARKJS_PLONK) &&
         this.snarkjsBackend
       ) {
-        return await this.snarkjsBackend.verifyProof(proof, publicInputs);
+        const proofStr = new TextDecoder().decode(proof);
+        const signalsStr = new TextDecoder().decode(publicInputs);
+        const parsedProof = JSON.parse(proofStr);
+        const parsedSignals = JSON.parse(signalsStr);
+        const isValid = await this.snarkjsBackend.verifyProof(parsedSignals, parsedProof);
+        return {
+          isValid,
+          verificationTimeMs: 0,
+        };
       } else {
         return await this.simplifiedBackend.verifyProof(proof, publicInputs);
       }
