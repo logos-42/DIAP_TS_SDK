@@ -181,18 +181,15 @@ export class RealNameAuthManager {
    * 生成实名认证凭证
    */
   public async createCredential(
-    keypair: { did: string; publicKey: Uint8Array },
+    keypair: { did: string; publicKey: Uint8Array; privateKey: Uint8Array },
     idNumber: string,
     name: string,
     authLevel: AuthLevel
   ): Promise<RealNameCredential> {
-    // 加密身份证号
-    const encryptedId = await this.encryptPersonalInfo(keypair, idNumber);
+    const encKeypair = { privateKey: keypair.privateKey };
 
-    // 加密姓名
-    const encryptedName = await this.encryptPersonalInfo(keypair, name);
-
-    // 生成凭证 ID
+    const encryptedId = await this.encryptPersonalInfo(encKeypair, idNumber);
+    const encryptedName = await this.encryptPersonalInfo(encKeypair, name);
     const credentialId = await this.generateCredentialId(keypair.publicKey, idNumber);
 
     return {
@@ -216,12 +213,7 @@ export class RealNameAuthManager {
     expiresAt?: string
   ): Promise<AgentAuthorization> {
     // 创建授权数据
-    const authData = [
-      authorizerKeypair.did,
-      agentDid,
-      Date.now().toString(),
-      authLevel,
-    ].join('|');
+    const authData = [authorizerKeypair.did, agentDid, Date.now().toString(), authLevel].join('|');
 
     // 签名
     const signature = await this.sign(authData, authorizerKeypair.privateKey);
@@ -309,13 +301,12 @@ export class RealNameAuthManager {
     keypair: { privateKey: Uint8Array },
     data: string
   ): Promise<string> {
-    // 使用 AES-GCM 加密
     const key = await this.deriveAesKey(keypair.privateKey);
     const nonce = crypto.getRandomValues(new Uint8Array(12));
-    
+
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      key,
+      key.buffer as ArrayBuffer,
       { name: 'AES-GCM' },
       false,
       ['encrypt']
@@ -327,7 +318,6 @@ export class RealNameAuthManager {
       new TextEncoder().encode(data)
     );
 
-    // 组合 nonce + ciphertext 并转为 Base64
     const combined = new Uint8Array(nonce.length + encrypted.byteLength);
     combined.set(nonce);
     combined.set(new Uint8Array(encrypted), nonce.length);
@@ -349,7 +339,7 @@ export class RealNameAuthManager {
     const key = await this.deriveAesKey(keypair.privateKey);
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      key,
+      key.buffer as ArrayBuffer,
       { name: 'AES-GCM' },
       false,
       ['decrypt']
@@ -373,8 +363,8 @@ export class RealNameAuthManager {
     const data = new Uint8Array(privateKey.length + 16);
     data.set(privateKey);
     data.set(new TextEncoder().encode('DIAP_AES_KEY'), privateKey.length);
-    
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
     return new Uint8Array(hashBuffer);
   }
 
@@ -385,7 +375,7 @@ export class RealNameAuthManager {
     const keyData = privateKey.slice(0, 32);
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      keyData,
+      keyData.buffer as ArrayBuffer,
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['sign']
@@ -402,7 +392,7 @@ export class RealNameAuthManager {
     const keyData = publicKey.slice(0, 32);
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      keyData,
+      keyData.buffer as ArrayBuffer,
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['verify']
@@ -412,7 +402,7 @@ export class RealNameAuthManager {
     return crypto.subtle.verify(
       'HMAC',
       cryptoKey,
-      signatureBytes,
+      signatureBytes.buffer as ArrayBuffer,
       new TextEncoder().encode(data)
     );
   }
@@ -424,8 +414,8 @@ export class RealNameAuthManager {
     const data = new Uint8Array(publicKey.length + new TextEncoder().encode(idNumber).length);
     data.set(publicKey);
     data.set(new TextEncoder().encode(idNumber), publicKey.length);
-    
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
     return this.arrayBufferToBase64(new Uint8Array(hashBuffer));
   }
 
@@ -475,14 +465,4 @@ export function createRealNameAuthManager(): RealNameAuthManager {
 // ============================================================================
 // 导出
 // ============================================================================
-
-export { RealNameAuthManager };
-export type {
-  RealNameCredential,
-  UserIdentity,
-  AgentAuthorization,
-  AgentMetadata,
-  AgentSignature,
-  AuthorizationChain,
-};
-export { AuthLevel, UserType, AgentAuthLevel };
+// 注意: RealNameCredential, AuthLevel, UserType 等已在声明时导出

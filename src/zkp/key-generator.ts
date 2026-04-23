@@ -176,10 +176,7 @@ export function base64ToBuffer(base64: string): Uint8Array {
 /**
  * 从 localStorage 加载密钥
  */
-export function loadKeysFromStorage(
-  pkPath: string,
-  vkPath: string
-): ZKPKeyPair | null {
+export function loadKeysFromStorage(pkPath: string, vkPath: string): ZKPKeyPair | null {
   if (typeof localStorage === 'undefined') {
     return null;
   }
@@ -215,14 +212,4 @@ export function createZKPKeys(): ZKPKeyPair {
 // ============================================================================
 // 导出
 // ============================================================================
-
-export {
-  generateSimpleZKPKeys,
-  ensureZKPKeysExist,
-  generateNoirKeys,
-  checkNargoAvailable,
-  compileNoirCircuit,
-  loadKeysFromStorage,
-  base64ToBuffer,
-};
-export type { ZKPKeyPair, KeyGenerationResult };
+// 注意: 所有函数和类型已在声明时导出

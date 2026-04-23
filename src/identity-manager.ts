@@ -4,22 +4,16 @@
  * 基于 Rust SDK 的实现逻辑
  */
 
-import type {
-  DIDDocument,
-  EncryptedPeerID,
-} from './types/did.js';
+import type { DIDDocument, EncryptedPeerID } from './types/did.js';
 import type { KeyPair } from './types/key.js';
 import type { IpfsClient } from './ipfs-client.js';
 import { DIDBuilder, getDIDDocumentFromCID } from './did-builder.js';
 import { UniversalNoirManager } from './zkp/universal-manager.js';
 import type { NoirProverInputs } from './types/zkp.js';
 import { DIDError, VerificationError } from './types/errors.js';
-import {
-  decryptPeerIdWithSecret,
-  verifyPeerIdSignature,
-} from './libp2p/encrypted-peer-id.js';
+import { decryptPeerIdWithSecret, verifyPeerIdSignature } from './libp2p/encrypted-peer-id.js';
 import { sha256 } from '@noble/hashes/sha256';
-import { blake2s256 } from '@noble/hashes/blake2';
+import { blake2s } from '@noble/hashes/blake2';
 import { encodeBase64, decodeBase64, decodeMultibase } from './utils/encoding.js';
 import { logger } from './utils/logger.js';
 
@@ -137,7 +131,7 @@ export class IdentityManager {
     logger.warn('⚠️ generate_zkp_proof已废弃，请使用Noir ZKP');
 
     const didJson = JSON.stringify(didDocument);
-    const didDocHash = blake2s256(new TextEncoder().encode(didJson));
+    const didDocHash = blake2s(new TextEncoder().encode(didJson), 32);
 
     const combined = new Uint8Array(didJson.length + nonce.length + keypair.privateKey.length);
     let offset = 0;
@@ -147,7 +141,7 @@ export class IdentityManager {
     offset += nonce.length;
     combined.set(keypair.privateKey, offset);
 
-    const proofHash = blake2s256(combined);
+    const proofHash = blake2s(combined, 32);
 
     return new Uint8Array(proofHash);
   }
@@ -169,7 +163,7 @@ export class IdentityManager {
     verificationDetails.push(`✓ DID文档获取成功: ${didDocument.id}`);
 
     const didJson = JSON.stringify(didDocument);
-    blake2s256(new TextEncoder().encode(didJson));
+    blake2s(new TextEncoder().encode(didJson), 32);
     verificationDetails.push('✓ DID文档哈希计算完成');
 
     const publicKey = this.extractPublicKey(didDocument);
@@ -255,7 +249,9 @@ export class IdentityManager {
         return encodedKey.slice(2);
       }
 
-      logger.warn(`未知的multicodec前缀: 0x${encodedKey[0].toString(16)}${encodedKey[1].toString(16)}`);
+      logger.warn(
+        `未知的multicodec前缀: 0x${encodedKey[0].toString(16)}${encodedKey[1].toString(16)}`
+      );
       return encodedKey;
     } catch (error) {
       logger.warn('解码base58公钥失败', { error });

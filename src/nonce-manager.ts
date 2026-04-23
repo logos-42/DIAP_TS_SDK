@@ -19,6 +19,18 @@ export interface NonceRecord {
   usedCount: number;
   /** 是否已使用 */
   isUsed: boolean;
+  /** 关联的 DID */
+  did?: string;
+}
+
+/**
+ * Nonce 验证结果
+ */
+export interface NonceVerifyResult {
+  /** 是否有效 */
+  isValid: boolean;
+  /** 错误信息 */
+  error?: string;
 }
 
 /**
@@ -57,6 +69,8 @@ export class NonceManager {
   private nonceCache: Map<string, NonceRecord>;
   /** 已使用的 Nonce 集合（用于快速查找） */
   private usedNonces: Set<string>;
+  /** 清理间隔（毫秒） */
+  private cleanupIntervalMs: number = 60000;
 
   /**
    * 创建 Nonce 管理器
@@ -81,10 +95,31 @@ export class NonceManager {
   }
 
   /**
+   * 生成新的 Nonce（静态方法，格式: timestamp:uuid:random）
+   */
+  public static generateNonce(): string {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const uuid = crypto.randomUUID ? crypto.randomUUID() : NonceManager.generateFallbackUuid();
+    const random = Math.floor(Math.random() * 0xffffffffffff).toString(16);
+    return `${timestamp}:${uuid}:${random}`;
+  }
+
+  /**
+   * 生成 fallback UUID
+   */
+  private static generateFallbackUuid(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  /**
    * 生成新的 Nonce
    */
   public generateNonce(): string {
-    const nonce = this.generateSecureRandomString(this.config.nonceLength);
+    const nonce = NonceManager.generateNonce();
 
     const now = Date.now();
     const record: NonceRecord = {
@@ -104,6 +139,67 @@ export class NonceManager {
     logger.debug(`🔢 生成 Nonce: ${nonce.substring(0, 8)}...`);
 
     return nonce;
+  }
+
+  /**
+   * 验证并记录 Nonce（原子操作）
+   *
+   * @returns true - Nonce 有效且未被使用
+   * @returns false - Nonce 已被使用（重放攻击）
+   * @throws Nonce 格式错误或已过期
+   */
+  public verifyAndRecord(nonce: string, did: string): NonceVerifyResult {
+    // 1. 解析 nonce 格式
+    const parts = nonce.split(':');
+    if (parts.length < 2) {
+      return { isValid: false, error: 'Nonce 格式错误' };
+    }
+
+    const timestamp = parseInt(parts[0], 10);
+    if (isNaN(timestamp)) {
+      return { isValid: false, error: '无法解析时间戳' };
+    }
+
+    // 2. 检查时间戳是否在有效期内
+    const now = Math.floor(Date.now() / 1000);
+
+    if (timestamp > now) {
+      return { isValid: false, error: 'Nonce 时间戳在未来' };
+    }
+
+    if (now - timestamp > this.config.ttlSeconds) {
+      return { isValid: false, error: `Nonce 已过期（超过${this.config.ttlSeconds}秒）` };
+    }
+
+    // 3. 检查是否已被使用
+    if (this.usedNonces.has(nonce)) {
+      logger.warn(`检测到重放攻击！Nonce 已被使用: ${nonce.substring(0, 8)}...`);
+      return { isValid: false, error: 'Nonce 已使用（重放攻击）' };
+    }
+
+    // 4. 记录 nonce
+    const nowMs = Date.now();
+    const record: NonceRecord = {
+      nonce,
+      createdAt: nowMs - (now - timestamp) * 1000,
+      expiresAt: nowMs + (this.config.ttlSeconds - (now - timestamp)) * 1000,
+      usedCount: 1,
+      isUsed: true,
+      did,
+    };
+
+    this.nonceCache.set(nonce, record);
+    this.usedNonces.add(nonce);
+
+    logger.debug(`✓ Nonce 验证通过并已记录: ${nonce.substring(0, 8)}...`);
+    return { isValid: true };
+  }
+
+  /**
+   * 检查 Nonce 是否已被使用
+   */
+  public isUsed(nonce: string): boolean {
+    return this.usedNonces.has(nonce);
   }
 
   /**
@@ -279,8 +375,7 @@ export class NonceManager {
    * 生成安全的随机字符串
    */
   private generateSecureRandomString(length: number): string {
-    const chars =
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
 
     // 使用 crypto 获取随机字节
@@ -346,10 +441,9 @@ export class NonceManager {
    * 启动清理任务
    */
   private startCleanupTask(): void {
-    // 每分钟清理一次
     setInterval(() => {
       this.cleanupExpired();
-    }, 60000);
+    }, this.cleanupIntervalMs);
   }
 
   /**
@@ -402,9 +496,7 @@ export class NonceManager {
 /**
  * 创建 Nonce 管理器（便捷函数）
  */
-export function createNonceManager(
-  config?: NonceManagerConfig
-): NonceManager {
+export function createNonceManager(config?: NonceManagerConfig): NonceManager {
   return new NonceManager(config);
 }
 
@@ -427,6 +519,4 @@ export function getGlobalNonceManager(): NonceManager {
 // ============================================================================
 // 导出
 // ============================================================================
-
-export { NonceManager };
-export type { NonceRecord, NonceManagerConfig, NonceValidationResult };
+// 注意: NonceRecord, NonceManagerConfig, NonceValidationResult 已在声明时导出

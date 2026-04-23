@@ -176,7 +176,7 @@ export class ConfigManager {
   /**
    * 创建配置管理器
    */
-  private constructor(config: DIAPConfig, configPath: string) {
+  public constructor(config: DIAPConfig, configPath: string) {
     this.config = config;
     this.configPath = configPath;
     logger.debug(`配置管理器已创建，路径: ${configPath}`);

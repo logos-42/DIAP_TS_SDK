@@ -136,10 +136,65 @@ export class PubsubAuthenticator {
   private usedNonces: Set<string> = new Set();
 
   /**
-   * 创建新的 PubSub 认证器
+   * 构造函数
    */
   constructor() {
     logger.info('🔐 PubSub 认证器已创建');
+  }
+
+  /**
+   * 判断给定标识是否为 IPNS 格式
+   */
+  public isIpnsFormat(value: string): boolean {
+    const v = value.trim();
+    if (v.startsWith('/ipns/')) {
+      return true;
+    }
+    if (v.length >= 46 && v.length <= 100) {
+      try {
+        return this.isBase58(v);
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 检查字符串是否为 Base58 编码
+   */
+  private isBase58(value: string): boolean {
+    const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    for (const char of value) {
+      if (!base58Chars.includes(char)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * 从 DID 文档中提取 PubSub 认证主题
+   */
+  public extractAuthTopicFromDid(didDocument: {
+    service?: Array<{
+      serviceType: string;
+      serviceEndpoint: { topic?: string } | string;
+    }>;
+  }): string | null {
+    if (!didDocument.service) {
+      return null;
+    }
+
+    for (const svc of didDocument.service) {
+      if (svc.serviceType.toLowerCase() === 'pubsubauth') {
+        const endpoint = svc.serviceEndpoint;
+        if (typeof endpoint === 'object' && endpoint.topic) {
+          return endpoint.topic;
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -251,7 +306,12 @@ export class PubsubAuthenticator {
     };
 
     const content = new TextEncoder().encode(JSON.stringify(payload));
-    return this.createAuthenticatedMessage(authTopic, PubSubMessageType.AuthRequest, content, toDid);
+    return this.createAuthenticatedMessage(
+      authTopic,
+      PubSubMessageType.AuthRequest,
+      content,
+      toDid
+    );
   }
 
   /**
@@ -502,7 +562,12 @@ export class PubsubAuthenticator {
     );
 
     try {
-      return await crypto.subtle.verify('HMAC', cryptoKey, signature, data);
+      return await crypto.subtle.verify(
+        'HMAC',
+        cryptoKey,
+        signature as BufferSource,
+        data as BufferSource
+      );
     } catch {
       return false;
     }
@@ -523,13 +588,4 @@ export function createPubsubAuthenticator(): PubsubAuthenticator {
 // ============================================================================
 // 导出
 // ============================================================================
-
-export { PubsubAuthenticator };
-export type {
-  AuthenticatedMessage,
-  PubsubAuthRequestPayload,
-  PubsubAuthResponsePayload,
-  MessageVerification,
-  TopicConfig,
-};
-export { PubSubMessageType, TopicPolicy };
+// 注意: AuthenticatedMessage, PubSubMessageType, TopicPolicy 等已在声明时导出

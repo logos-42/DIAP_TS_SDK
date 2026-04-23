@@ -439,6 +439,376 @@ export class IpfsClient {
   }
 
   /**
+   * 发布 IPNS 并同时 Pin 到多节点（确保内容可用性）
+   */
+  async publishAndPin(
+    cid: string,
+    keyName: string,
+    lifetime: string = '8760h',
+    ttl: string = '1h',
+    pinNodes: string[] = []
+  ): Promise<IpnsPublishResult> {
+    logger.info(`📌 发布 IPNS 并 Pin 到 ${pinNodes.length} 个节点...`);
+
+    const ipnsResult = await this.publishAfterUploadDirect(cid, keyName, lifetime, ttl);
+
+    if (pinNodes.length > 0) {
+      const pinPromises = pinNodes.map(async (nodeUrl) => {
+        try {
+          const url = `${nodeUrl}/api/v0/pin/add?arg=${cid}`;
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'User-Agent': 'diap-ts-sdk/0.2',
+            },
+          });
+
+          if (resp.ok) {
+            logger.info(`✅ 已 Pin 到节点：${nodeUrl}`);
+          } else {
+            logger.warn(`⚠️ 节点 ${nodeUrl} Pin 失败：${resp.status}`);
+          }
+        } catch (error) {
+          logger.warn(`⚠️ 节点 ${nodeUrl} Pin 失败：${error}`);
+        }
+      });
+
+      await Promise.allSettled(pinPromises);
+    }
+
+    return ipnsResult;
+  }
+
+  /**
+   * 上传后直接发布到 IPNS DHT（allow-offline=false）
+   */
+  async publishAfterUploadDirect(
+    cid: string,
+    keyName: string,
+    lifetime: string = '8760h',
+    ttl: string = '1h'
+  ): Promise<IpnsPublishResult> {
+    if (!this.apiUrl) {
+      throw new IPFSError('未配置远程IPFS API，无法进行IPNS发布');
+    }
+
+    await this.ensureKeyExists(keyName);
+
+    const argPath = `/ipfs/${cid}`;
+    const url = `${this.apiUrl}/api/v0/name/publish?arg=${encodeURIComponent(argPath)}&key=${encodeURIComponent(keyName)}&allow-offline=false&resolve=true&lifetime=${encodeURIComponent(lifetime)}&ttl=${encodeURIComponent(ttl)}`;
+
+    logger.info('📡 发布IPNS记录到DHT（allow-offline=false）...');
+    logger.info('   要求: 节点必须在线并连接到DHT网络');
+
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'User-Agent': 'diap-ts-sdk/0.2',
+        },
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        if (text.includes('not connected to network') || text.includes('offline')) {
+          throw new IPFSError(
+            `IPNS 发布失败: 节点未连接到DHT网络。\n提示: 1) 确保IPFS守护进程正在运行\n2) 检查节点是否可被其他节点访问\n3) 等待节点连接到足够的对等节点\n原始错误: ${resp.status} - ${text}`,
+            { cid, keyName }
+          );
+        }
+        throw new Error(`IPNS 发布失败: ${resp.status} - ${text}`);
+      }
+
+      const v = await resp.json();
+      const name = v.Name || '';
+      const value = v.Value || '';
+
+      logger.info(`✅ IPNS记录已发布到DHT: /ipns/${name}`);
+      logger.info('   记录将在DHT网络中传播，全球可访问');
+
+      return {
+        name,
+        value,
+        publishedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      throw new IPFSError('发送 IPNS 发布请求失败', { originalError: error, cid, keyName });
+    }
+  }
+
+  /**
+   * 并行发布到多个 IPFS 节点（加速传播）
+   */
+  async publishToMultipleNodes(
+    cid: string,
+    keyName: string,
+    nodes: string[],
+    lifetime: string = '8760h',
+    ttl: string = '1h'
+  ): Promise<IpnsPublishResult[]> {
+    logger.info(`🚀 并行发布到 ${nodes.length} 个节点...`);
+
+    const results: IpnsPublishResult[] = [];
+    const failures: { node: string; error: string }[] = [];
+
+    const publishPromises = nodes.map(async (nodeUrl) => {
+      try {
+        const argPath = `/ipfs/${cid}`;
+        const url = `${nodeUrl}/api/v0/name/publish?arg=${encodeURIComponent(argPath)}&key=${encodeURIComponent(keyName)}&allow-offline=false&resolve=true&lifetime=${encodeURIComponent(lifetime)}&ttl=${encodeURIComponent(ttl)}`;
+
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'User-Agent': 'diap-ts-sdk/0.2',
+          },
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(`节点 ${nodeUrl} IPNS 发布失败：${resp.status} - ${text}`);
+        }
+
+        const v = await resp.json();
+        const name = v.Name || '';
+        const value = v.Value || '';
+
+        return {
+          name,
+          value,
+          publishedAt: new Date().toISOString(),
+        } as IpnsPublishResult;
+      } catch (error) {
+        throw { nodeUrl, error };
+      }
+    });
+
+    const settled = await Promise.allSettled(publishPromises);
+
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        results.push(result.value);
+      } else {
+        const { nodeUrl, error } = result.reason as { nodeUrl: string; error: string };
+        logger.warn(`⚠️ 节点 ${nodeUrl} 发布失败: ${error}`);
+        failures.push({ node: nodeUrl, error });
+      }
+    }
+
+    if (failures.length > 0) {
+      logger.warn(`⚠️ ${failures.length}/${nodes.length} 节点发布失败`);
+    }
+
+    logger.info(`✅ ${results.length}/${nodes.length} 节点发布成功`);
+    return results;
+  }
+
+  /**
+   * 批量发布到多个 IPNS key（适用于多身份场景）
+   */
+  async batchPublishIpns(
+    cid: string,
+    keys: string[],
+    lifetime: string = '8760h'
+  ): Promise<IpnsPublishResult[]> {
+    if (!this.apiUrl) {
+      throw new IPFSError('未配置远程 IPFS API');
+    }
+
+    logger.info(`🔑 批量发布到 ${keys.length} 个 IPNS key...`);
+
+    const results: IpnsPublishResult[] = [];
+
+    const publishPromises = keys.map(async (keyName) => {
+      const argPath = `/ipfs/${cid}`;
+      const url = `${this.apiUrl}/api/v0/name/publish?arg=${encodeURIComponent(argPath)}&key=${encodeURIComponent(keyName)}&allow-offline=false&resolve=true&lifetime=${encodeURIComponent(lifetime)}&ttl=1h`;
+
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'User-Agent': 'diap-ts-sdk/0.2',
+        },
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Key ${keyName} IPNS 发布失败：${resp.status} - ${text}`);
+      }
+
+      const v = await resp.json();
+      return {
+        name: v.Name || '',
+        value: v.Value || '',
+        publishedAt: new Date().toISOString(),
+      } as IpnsPublishResult;
+    });
+
+    const settled = await Promise.allSettled(publishPromises);
+
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        results.push(result.value);
+      }
+    }
+
+    logger.info(`✅ ${results.length}/${keys.length} key 发布成功`);
+    return results;
+  }
+
+  /**
+   * 广播 IPNS 记录到 DHT（加速传播）
+   */
+  async broadcastToDht(ipnsName: string): Promise<void> {
+    if (!this.apiUrl) {
+      throw new IPFSError('未配置远程 IPFS API');
+    }
+
+    const name = ipnsName.startsWith('/ipns/') ? ipnsName : `/ipns/${ipnsName}`;
+    const url = `${this.apiUrl}/api/v0/name/pubsub/pub?arg=${encodeURIComponent(name)}`;
+
+    logger.info(`📡 广播 IPNS 记录 ${ipnsName} 到 DHT...`);
+
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'User-Agent': 'diap-ts-sdk/0.2',
+        },
+      });
+
+      if (resp.ok) {
+        logger.info('✅ IPNS 记录已广播到 DHT');
+      } else {
+        const text = await resp.text();
+        logger.warn(`⚠️ DHT 广播失败：${resp.status} - ${text}`);
+      }
+    } catch (error) {
+      logger.warn(`⚠️ DHT 广播失败：${error}`);
+    }
+  }
+
+  /**
+   * 预传播 CID 到多个节点（加速首次访问）
+   */
+  async prepropagateCid(cid: string, bootstrapNodes: string[] = []): Promise<void> {
+    logger.info(`📢 预传播 CID ${cid} 到 ${bootstrapNodes.length} 个节点...`);
+
+    const propagatePromises = bootstrapNodes.map(async (nodeUrl) => {
+      try {
+        const url = `${nodeUrl}/api/v0/pin/add?arg=${cid}&progress=false`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'User-Agent': 'diap-ts-sdk/0.2',
+          },
+        });
+
+        if (resp.ok) {
+          logger.debug(`✅ 节点 ${nodeUrl} 已缓存 CID ${cid}`);
+        } else {
+          logger.warn(`⚠️ 节点 ${nodeUrl} 缓存失败：${resp.status}`);
+        }
+      } catch (error) {
+        logger.warn(`⚠️ 节点 ${nodeUrl} 缓存失败：${error}`);
+      }
+    });
+
+    await Promise.allSettled(propagatePromises);
+    logger.info('✅ CID 预传播完成');
+  }
+
+  /**
+   * 解析 IPNS 名称为 CID
+   */
+  async resolveIpns(ipnsName: string): Promise<string> {
+    // 规范化名称
+    const name = ipnsName.startsWith('/ipns/') ? ipnsName.slice(6) : ipnsName;
+
+    // 优先使用远程 API
+    if (this.apiUrl) {
+      const url = `${this.apiUrl}/api/v0/name/resolve?arg=${encodeURIComponent(`/ipns/${name}`)}&recursive=true&nocache=true`;
+
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'User-Agent': 'diap-ts-sdk/0.2',
+          },
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new IPFSError(`IPNS 解析失败: ${resp.status} - ${text}`, { ipnsName: name });
+        }
+
+        const v = await resp.json();
+        const path = v.Path;
+
+        if (!path) {
+          throw new IPFSError('IPNS 解析响应缺少 Path 字段', { ipnsName: name });
+        }
+
+        // 提取 CID
+        const cid = path.startsWith('/ipfs/') ? path.slice(6) : path;
+        return cid;
+      } catch (error) {
+        throw new IPFSError('发送 IPNS 解析请求失败', { originalError: error, ipnsName: name });
+      }
+    }
+
+    // 未配置 API：尝试通过公共网关
+    for (const gateway of this.publicGateways) {
+      try {
+        const url = `${gateway}/ipns/${name}`;
+        
+        // 使用不跟随重定向的 HEAD 请求
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+        const resp = await fetch(url, {
+          method: 'HEAD',
+          redirect: 'manual',
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (resp.status >= 300 && resp.status < 400) {
+          const location = resp.headers.get('Location');
+          if (location) {
+            if (location.startsWith('/ipfs/')) {
+              return location.slice(7).split('/')[0];
+            }
+            if (location.includes('/ipfs/')) {
+              const idx = location.indexOf('/ipfs/');
+              const cidPart = location.slice(idx + 7);
+              return cidPart.split(/[/?#]/)[0];
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn(`通过网关解析 IPNS 失败 (${gateway}): ${error}`);
+        continue;
+      }
+    }
+
+    throw new IPFSError('未配置远程 IPFS API，且无法通过任何网关解析 IPNS 名称', { ipnsName: name });
+  }
+
+  /**
+   * 获取 API URL
+   */
+  getApiUrl(): string | null {
+    return this.apiUrl;
+  }
+
+  /**
+   * 获取网关 URL
+   */
+  getGatewayUrl(): string | null {
+    return this.gatewayUrl;
+  }
+
+  /**
    * 停止客户端
    */
   async stop(): Promise<void> {

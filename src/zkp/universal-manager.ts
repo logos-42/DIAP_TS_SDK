@@ -3,14 +3,8 @@
  * 统一接口，支持多种后端（snarkjs, simplified）
  */
 
-import type {
-  NoirProverInputs,
-  NoirProofResult,
-  NoirVerificationResult,
-  NoirBackend,
-  BackendInfo,
-  PerformanceStats,
-} from '../types/zkp.js';
+import type { NoirProverInputs, NoirProofResult, NoirVerificationResult } from '../types/zkp.js';
+import { NoirBackend } from '../types/zkp.js';
 import { ZKPError } from '../types/errors.js';
 import { SnarkjsBackend } from './snarkjs-backend.js';
 import { SimplifiedBackend } from './simplified-backend.js';
@@ -31,8 +25,7 @@ export class UniversalNoirManager {
     const manager = new UniversalNoirManager();
 
     try {
-      const snarkjsBackend = new SnarkjsBackend();
-      await snarkjsBackend.initialize();
+      const snarkjsBackend = new SnarkjsBackend({});
       manager.backend = NoirBackend.SNARKJS_GROTH16;
       manager.snarkjsBackend = snarkjsBackend;
       logger.info('Using snarkjs backend for ZKP');
@@ -80,7 +73,11 @@ export class UniversalNoirManager {
    */
   async generateProof(inputs: NoirProverInputs): Promise<NoirProofResult> {
     try {
-      if ((this.backend === NoirBackend.SNARKJS_GROTH16 || this.backend === NoirBackend.SNARKJS_PLONK) && this.snarkjsBackend) {
+      if (
+        (this.backend === NoirBackend.SNARKJS_GROTH16 ||
+          this.backend === NoirBackend.SNARKJS_PLONK) &&
+        this.snarkjsBackend
+      ) {
         return await this.snarkjsBackend.generateProof(inputs);
       } else {
         return await this.simplifiedBackend.generateProof(inputs);
@@ -94,12 +91,13 @@ export class UniversalNoirManager {
   /**
    * 验证证明
    */
-  async verifyProof(
-    proof: Uint8Array,
-    publicInputs: Uint8Array
-  ): Promise<NoirVerificationResult> {
+  async verifyProof(proof: Uint8Array, publicInputs: Uint8Array): Promise<NoirVerificationResult> {
     try {
-      if ((this.backend === NoirBackend.SNARKJS_GROTH16 || this.backend === NoirBackend.SNARKJS_PLONK) && this.snarkjsBackend) {
+      if (
+        (this.backend === NoirBackend.SNARKJS_GROTH16 ||
+          this.backend === NoirBackend.SNARKJS_PLONK) &&
+        this.snarkjsBackend
+      ) {
         return await this.snarkjsBackend.verifyProof(proof, publicInputs);
       } else {
         return await this.simplifiedBackend.verifyProof(proof, publicInputs);
@@ -114,7 +112,11 @@ export class UniversalNoirManager {
    * 获取后端信息
    */
   getBackendInfo(): BackendInfo {
-    if ((this.backend === NoirBackend.SNARKJS_GROTH16 || this.backend === NoirBackend.SNARKJS_PLONK) && this.snarkjsBackend) {
+    if (
+      (this.backend === NoirBackend.SNARKJS_GROTH16 ||
+        this.backend === NoirBackend.SNARKJS_PLONK) &&
+      this.snarkjsBackend
+    ) {
       return {
         backendType: this.backend,
         isAvailable: this.snarkjsBackend.isAvailable(),

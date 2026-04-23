@@ -236,18 +236,10 @@ export class AgentVerificationManager {
 
     const [result1, result2] = await Promise.all([
       this.verifyIdentity(
-        this.createVerificationRequest(
-          agent1Did,
-          agent2Did,
-          VerificationType.Bidirectional
-        )
+        this.createVerificationRequest(agent1Did, agent2Did, VerificationType.Bidirectional)
       ),
       this.verifyIdentity(
-        this.createVerificationRequest(
-          agent2Did,
-          agent1Did,
-          VerificationType.Bidirectional
-        )
+        this.createVerificationRequest(agent2Did, agent1Did, VerificationType.Bidirectional)
       ),
     ]);
 
@@ -331,9 +323,7 @@ export class AgentVerificationManager {
   /**
    * 模拟验证过程
    */
-  private async simulateVerification(
-    type: VerificationType
-  ): Promise<void> {
+  private async simulateVerification(type: VerificationType): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
@@ -345,16 +335,11 @@ export class AgentVerificationManager {
 /**
  * 创建验证管理器（便捷函数）
  */
-export function createVerificationManager(
-  verificationTimeout?: number
-): AgentVerificationManager {
+export function createVerificationManager(verificationTimeout?: number): AgentVerificationManager {
   return new AgentVerificationManager(verificationTimeout);
 }
 
 // ============================================================================
 // 导出
 // ============================================================================
-
-export { AgentVerificationManager };
-export type { VerificationRequest, VerificationResponse, VerificationResult };
-export { VerificationStatus, VerificationType };
+// 注意: 所有类型已在声明时导出

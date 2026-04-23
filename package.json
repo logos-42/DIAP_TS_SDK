@@ -1,6 +1,6 @@
 {
   "name": "@diap/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DIAP TypeScript SDK - Decentralized Intelligent Agent Protocol",
   "type": "module",
   "main": "dist/index.js",

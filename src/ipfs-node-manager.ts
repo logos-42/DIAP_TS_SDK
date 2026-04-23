@@ -290,16 +290,10 @@ export class IpfsNodeManager extends EventEmitter {
 /**
  * 创建 IPFS 节点管理器（便捷函数）
  */
-export async function createIpfsNodeManager(
-  config?: IpfsNodeConfig
-): Promise<IpfsNodeManager> {
+export async function createIpfsNodeManager(config?: IpfsNodeConfig): Promise<IpfsNodeManager> {
   return IpfsNodeManager.create(config);
 }
 
 // ============================================================================
 // 导出
 // ============================================================================
-
-export { IpfsNodeManager };
-export type { IpfsNodeConfig, IpfsNodeInfo };
-export { IpfsNodeStatus };

@@ -65,10 +65,7 @@ export class AgentAuthManager {
   /**
    * 使用自定义 IPFS 节点创建认证管理器
    */
-  static async newWithRemoteIpfs(
-    apiUrl: string,
-    gatewayUrl: string
-  ): Promise<AgentAuthManager> {
+  static async newWithRemoteIpfs(apiUrl: string, gatewayUrl: string): Promise<AgentAuthManager> {
     logger.info('🚀 初始化智能体认证管理器（使用远程IPFS）');
 
     const ipfsClient = await IpfsClient.newWithRemoteNode(apiUrl, gatewayUrl, 30);
@@ -85,7 +82,10 @@ export class AgentAuthManager {
   /**
    * 创建智能体
    */
-  createAgent(name: string, _email?: string): {
+  createAgent(
+    name: string,
+    _email?: string
+  ): {
     agentInfo: AgentInfo;
     keypair: KeyPair;
     peerId: string;
@@ -153,12 +153,7 @@ export class AgentAuthManager {
       const didDocument = await this.ipfsClient.get(cid);
       const parsedDoc = JSON.parse(didDocument);
 
-      const proof = this.identityManager.generateBindingProof(
-        keypair,
-        parsedDoc,
-        cid,
-        nonce
-      );
+      const proof = this.identityManager.generateBindingProof(keypair, parsedDoc, cid, nonce);
 
       const processingTime = Date.now() - startTime;
 
@@ -198,11 +193,7 @@ export class AgentAuthManager {
       const nonceStr = `verify_${timestamp}`;
       const nonce = new TextEncoder().encode(nonceStr);
 
-      const verification = await this.identityManager.verifyIdentityWithZKP(
-        cid,
-        proof,
-        nonce
-      );
+      const verification = await this.identityManager.verifyIdentityWithZKP(cid, proof, nonce);
 
       const processingTime = Date.now() - startTime;
 
@@ -241,7 +232,7 @@ export class AgentAuthManager {
     bobKeypair: KeyPair,
     _bobPeerId: string,
     bobCid: string
-  ): Promise<[AuthResult, AuthResult, AuthResult, AuthResult]> {
+  ): Promise<[AuthResult, AuthResult, AuthResult]> {
     logger.info('🔄 开始双向认证流程');
 
     const aliceProof = await this.generateProof(aliceKeypair, aliceCid);
@@ -254,11 +245,11 @@ export class AgentAuthManager {
     logger.info(`   Alice → Bob: ${bobVerifyAlice.success ? '✅' : '❌'}`);
     logger.info(`   Bob → Alice: ${aliceVerifyBob.success ? '✅' : '❌'}`);
 
-    return [aliceProof, bobVerifyAlice, bobProof, aliceVerifyBob];
+    return [aliceProof, bobVerifyAlice, aliceVerifyBob];
   }
 
   /**
-   * 批量认证测试
+   * 批量认证测试（串行版本）
    */
   async batchAuthenticationTest(
     _agentInfo: AgentInfo,
@@ -296,6 +287,204 @@ export class AgentAuthManager {
       totalTimeMs: totalTime,
       averageTimeMs: Math.floor(totalTime / count),
       results,
+    };
+  }
+
+  /**
+   * 并发批量认证测试（真并行）
+   */
+  async concurrentBatchAuthenticationTest(
+    _agentInfo: AgentInfo,
+    keypair: KeyPair,
+    _peerId: string,
+    cid: string,
+    count: number,
+    maxConcurrency: number = 10
+  ): Promise<BatchAuthResult> {
+    logger.info(`⚡ 开始并发批量认证测试: ${count}次 (最大并发: ${maxConcurrency})`);
+
+    const startTime = Date.now();
+    const results: AuthResult[] = [];
+    let successCount = 0;
+
+    // 使用信号量控制并发数
+    let running = 0;
+    let index = 0;
+
+    const executeBatch = async (): Promise<void> => {
+      while (index < count) {
+        const currentIndex = index++;
+        const currentRunning = ++running;
+
+        if (currentRunning > maxConcurrency) {
+          running--;
+          await new Promise(resolve => setTimeout(resolve, 10));
+          continue;
+        }
+
+        logger.info(`   处理第${currentIndex + 1}个认证... (并发: ${currentRunning})`);
+
+        try {
+          const proofResult = await this.generateProof(keypair, cid);
+          if (proofResult.success) {
+            successCount++;
+          }
+          results.push(proofResult);
+        } catch (error) {
+          logger.error(`   第${currentIndex + 1}个认证失败: ${error}`);
+          results.push({
+            success: false,
+            agentId: '',
+            verificationDetails: [`并发认证失败: ${error}`],
+            timestamp: Math.floor(Date.now() / 1000),
+            processingTimeMs: 0,
+          });
+        }
+
+        running--;
+      }
+    };
+
+    // 启动多个并发任务
+    const tasks: Promise<void>[] = [];
+    const numWorkers = Math.min(maxConcurrency, count);
+    for (let i = 0; i < numWorkers; i++) {
+      tasks.push(executeBatch());
+    }
+
+    await Promise.all(tasks);
+
+    const totalTime = Date.now() - startTime;
+    const failureCount = count - successCount;
+    const successRate = (successCount / count) * 100;
+
+    logger.info(`✅ 并发批量认证完成`);
+    logger.info(`   总处理数: ${count}`);
+    logger.info(`   成功数: ${successCount}`);
+    logger.info(`   成功率: ${successRate.toFixed(2)}%`);
+    logger.info(`   总时间: ${totalTime}ms`);
+    logger.info(`   平均时间: ${Math.floor(totalTime / count)}ms`);
+
+    return {
+      totalCount: count,
+      successCount,
+      failureCount,
+      successRate,
+      totalTimeMs: totalTime,
+      averageTimeMs: Math.floor(totalTime / count),
+      results,
+    };
+  }
+
+  /**
+   * 并发生成证明（仅生成，不验证）
+   */
+  async concurrentGenerateProofs(
+    keypair: KeyPair,
+    cid: string,
+    count: number,
+    maxConcurrency: number = 20
+  ): Promise<AuthResult[]> {
+    logger.info(`⚡ 并发生成 ${count} 个证明 (并发: ${maxConcurrency})`);
+
+    const promises: Promise<AuthResult>[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const promise = this.generateProof(keypair, cid);
+      promises.push(promise);
+    }
+
+    // 使用 Promise.allSettled 进行并发控制
+    const batchSize = maxConcurrency;
+    const results: AuthResult[] = [];
+
+    for (let i = 0; i < promises.length; i += batchSize) {
+      const batch = promises.slice(i, i + batchSize);
+      const batchResults = await Promise.allSettled(batch);
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+        } else {
+          logger.error(`证明生成失败: ${result.reason}`);
+          results.push({
+            success: false,
+            agentId: '',
+            verificationDetails: [`并发生成失败: ${result.reason}`],
+            timestamp: Math.floor(Date.now() / 1000),
+            processingTimeMs: 0,
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * 压力测试模式：同时进行生成和验证
+   */
+  async stressTest(
+    keypair: KeyPair,
+    cid: string,
+    iterations: number,
+    maxConcurrency: number = 10
+  ): Promise<{
+    proofResults: AuthResult[];
+    verifyResults: AuthResult[];
+    totalTimeMs: number;
+    successRate: number;
+  }> {
+    logger.info(`💥 开始压力测试: ${iterations} 次迭代 (并发: ${maxConcurrency})`);
+
+    const startTime = Date.now();
+
+    // 第一批：并发生成证明
+    const proofResults = await this.concurrentGenerateProofs(keypair, cid, iterations, maxConcurrency);
+
+    // 过滤成功的证明
+    const validProofs = proofResults.filter(r => r.success && r.proof);
+
+    // 第二批：并发验证
+    const verifyPromises: Promise<AuthResult>[] = validProofs.map(proof =>
+      this.verifyIdentity(cid, proof.proof!)
+    );
+
+    const verifyResults: AuthResult[] = [];
+    for (let i = 0; i < verifyPromises.length; i += maxConcurrency) {
+      const batch = verifyPromises.slice(i, i + maxConcurrency);
+      const batchResults = await Promise.allSettled(batch);
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          verifyResults.push(result.value);
+        } else {
+          verifyResults.push({
+            success: false,
+            agentId: '',
+            verificationDetails: [`验证失败: ${result.reason}`],
+            timestamp: Math.floor(Date.now() / 1000),
+            processingTimeMs: 0,
+          });
+        }
+      }
+    }
+
+    const totalTime = Date.now() - startTime;
+    const successCount = verifyResults.filter(r => r.success).length;
+    const successRate = (successCount / verifyResults.length) * 100;
+
+    logger.info(`✅ 压力测试完成`);
+    logger.info(`   生成成功: ${proofResults.filter(r => r.success).length}/${iterations}`);
+    logger.info(`   验证成功: ${successCount}/${verifyResults.length}`);
+    logger.info(`   成功率: ${successRate.toFixed(2)}%`);
+    logger.info(`   总时间: ${totalTime}ms`);
+
+    return {
+      proofResults,
+      verifyResults,
+      totalTimeMs: totalTime,
+      successRate,
     };
   }
 

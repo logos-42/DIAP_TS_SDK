@@ -139,6 +139,7 @@ export interface BidirectionalVerificationResult {
  * IPFS 双向验证管理器（轻量级版本）
  */
 export class IpfsBidirectionalVerificationManager {
+  private ipfsClient: unknown = null;
   private activeSessions: Map<string, AgentSession> = new Map();
   private verificationCache: Map<string, VerificationResult> = new Map();
   private sessionTimeout: number = 3600 * 1000; // 1小时
@@ -146,8 +147,23 @@ export class IpfsBidirectionalVerificationManager {
   /**
    * 创建新的双向验证管理器
    */
-  constructor() {
+  constructor(ipfsClient?: unknown) {
+    this.ipfsClient = ipfsClient || null;
     logger.info('🚀 IPFS 双向验证管理器已创建（轻量级版本）');
+  }
+
+  /**
+   * 设置 IPFS 客户端
+   */
+  public setIpfsClient(client: unknown): void {
+    this.ipfsClient = client;
+  }
+
+  /**
+   * 获取 IPFS 客户端
+   */
+  public getIpfsClient(): unknown {
+    return this.ipfsClient;
   }
 
   /**
@@ -214,8 +230,9 @@ export class IpfsBidirectionalVerificationManager {
     const responderResult = await this.verifyAgent(responderId, challenge);
 
     const totalTime = Date.now() - startTime;
-    const success = initiatorResult.status === VerificationStatus.Success &&
-                    responderResult.status === VerificationStatus.Success;
+    const success =
+      initiatorResult.status === VerificationStatus.Success &&
+      responderResult.status === VerificationStatus.Success;
 
     const result: BidirectionalVerificationResult = {
       success,
@@ -444,13 +461,4 @@ export function createBidirectionalVerificationManager(): IpfsBidirectionalVerif
 // ============================================================================
 // 导出
 // ============================================================================
-
-export { IpfsBidirectionalVerificationManager };
-export type {
-  AgentSession,
-  ProofData,
-  VerificationResult,
-  VerificationChallenge,
-  BidirectionalVerificationResult,
-};
-export { SessionStatus, VerificationStatus };
+// 注意: AgentSession, SessionStatus, VerificationStatus 等已在声明时导出

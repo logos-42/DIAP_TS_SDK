@@ -1,20 +1,20 @@
 /**
  * DIAP TypeScript SDK - Snarkjs ZKP 后端
  * 使用 snarkjs 实现零知识证明
- * 
+ *
  * 安装: npm install snarkjs
- * 
+ *
  * @example
  * ```typescript
  * import { groth16 } from 'snarkjs';
- * 
+ *
  * // 生成证明
  * const { proof, publicSignals } = await groth16.fullProve(
  *   { in: 10 },
  *   'circuit.wasm',
  *   'circuit_final.zkey'
  * );
- * 
+ *
  * // 验证证明
  * const vKey = await fetch('verification_key.json').then(r => r.json());
  * const isValid = await groth16.verify(vKey, publicSignals, proof);
@@ -81,7 +81,7 @@ export interface SnarkjsBackendConfig {
 
 /**
  * Snarkjs ZKP 后端
- * 
+ *
  * 提供与 snarkjs 的集成，用于生成和验证零知识证明
  */
 export class SnarkjsBackend {
@@ -123,7 +123,7 @@ export class SnarkjsBackend {
 
   /**
    * 生成证明
-   * 
+   *
    * @param inputs - 证明输入
    * @returns 证明结果和公共信号
    */
@@ -161,7 +161,7 @@ export class SnarkjsBackend {
 
   /**
    * 验证证明
-   * 
+   *
    * @param publicSignals - 公共信号
    * @param proof - 证明
    * @returns 是否验证通过
@@ -235,13 +235,13 @@ export async function groth16Prove(
   zkeyPath: string
 ): Promise<SnarkjsProofResult> {
   const { groth16 } = await import('snarkjs');
-  
+
   logger.info('🔐 使用 Groth16 生成证明...');
-  
+
   const result = await groth16.fullProve(inputs, wasmPath, zkeyPath);
-  
+
   logger.info('✅ Groth16 证明生成成功');
-  
+
   return {
     proof: result.proof,
     publicSignals: result.publicSignals,
@@ -257,78 +257,59 @@ export async function groth16Verify(
   proof: SnarkjsProofResult['proof']
 ): Promise<boolean> {
   const { groth16 } = await import('snarkjs');
-  
+
   logger.info('🔍 使用 Groth16 验证证明...');
-  
+
   const isValid = await groth16.verify(vKey, publicSignals, proof);
-  
+
   if (isValid) {
     logger.info('✅ Groth16 验证通过');
   } else {
     logger.warn('❌ Groth16 验证失败');
   }
-  
+
   return isValid;
 }
 
 /**
  * 导出验证密钥（用于将验证密钥部署到链上或前端）
  */
-export async function exportSolidityVerifier(
-  zkeyPath: string
-): Promise<string> {
+export async function exportSolidityVerifier(zkeyPath: string): Promise<string> {
   const { zkey } = await import('snarkjs');
-  
+
   logger.info('📝 导出 Solidity 验证器...');
-  
+
   const vKey = await zkey.loadZKey(zkeyPath);
   const { groth16 } = await import('snarkjs');
-  
+
   // @ts-ignore - snarkjs 的类型定义不完整
   const solidityCode = await groth16.exportSolidityVerifier(vKey);
-  
+
   logger.info('✅ Solidity 验证器导出成功');
-  
+
   return solidityCode;
 }
 
 /**
  * 导出 Solidity Verifier 合约
  */
-export async function exportVnMixVerifier(
-  zkeyPath: string
-): Promise<string> {
+export async function exportVnMixVerifier(zkeyPath: string): Promise<string> {
   const { zkey } = await import('snarkjs');
-  
+
   logger.info('📝 导出 Verifier Mix 合约...');
-  
+
   const vKey = await zkey.loadZKey(zkeyPath);
   const { zkevm } = await import('snarkjs');
-  
+
   // @ts-ignore - snarkjs 的类型定义不完整
   const solidityCode = await zkevm.exportSolidityVerifier(vKey);
-  
+
   logger.info('✅ Verifier Mix 合约导出成功');
-  
+
   return solidityCode;
 }
 
 // ============================================================================
 // 导出
 // ============================================================================
-
-export {
-  SnarkjsBackend,
-  createSnarkjsBackend,
-  groth16Prove,
-  groth16Verify,
-  exportSolidityVerifier,
-  exportVnMixVerifier,
-};
-
-export type {
-  SnarkjsProofResult,
-  SnarkjsVerificationKey,
-  SnarkjsProverInputs,
-  SnarkjsBackendConfig,
-};
+// 注意: 所有函数和类型已在声明时导出

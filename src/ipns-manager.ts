@@ -394,7 +394,3 @@ export async function createIpnsManager(
 // ============================================================================
 // 导出
 // ============================================================================
-
-export { IpnsManager };
-export type { IpnsConfig, IpnsPublishResult, IpnsResolveResult, KeyInfo };
-export { IpnsRecordStatus };

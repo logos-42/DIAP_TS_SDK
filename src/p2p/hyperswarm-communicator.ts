@@ -1,18 +1,18 @@
 /**
  * DIAP TypeScript SDK - Hyperswarm P2P 通信器
- * 
+ *
  * 使用 Hyperswarm 实现轻量级 P2P 网络
- * 
+ *
  * 安装: npm install hyperswarm
- * 
+ *
  * @example
  * ```typescript
  * import Hyperswarm from 'hyperswarm';
- * 
+ *
  * const swarm = new Hyperswarm();
  * const topic = Buffer.alloc(32).fill('hello-world');
  * swarm.join(topic, { server: true, client: true });
- * 
+ *
  * swarm.on('connection', (conn, info) => {
  *   console.log('新连接:', info.publicKey.toString('hex'));
  *   conn.write('hello from TS!');
@@ -110,6 +110,20 @@ export interface P2PMessage {
 }
 
 /**
+ * P2P 消息签名数据
+ */
+export interface P2PMessageSignature {
+  /** 签名者公钥 */
+  signerPublicKey: string;
+  /** 消息哈希 */
+  messageHash: string;
+  /** 签名 */
+  signature: Uint8Array;
+  /** 时间戳 */
+  timestamp: number;
+}
+
+/**
  * Hyperswarm P2P 通信器事件
  */
 export interface HyperswarmEvents {
@@ -125,7 +139,7 @@ export interface HyperswarmEvents {
 
 /**
  * Hyperswarm P2P 通信器
- * 
+ *
  * 基于 Hyperswarm 实现轻量级 P2P 网络
  * 专注于快速节点发现和加密连接
  */
@@ -230,7 +244,7 @@ export class HyperswarmCommunicator {
     }
 
     const topicHex = typeof topic === 'string' ? topic : topic.toString('hex');
-    
+
     if (this.topics.has(topicHex)) {
       logger.warn(`⚠️ 已加入主题: ${topicHex.substring(0, 8)}...`);
       return;
@@ -240,16 +254,16 @@ export class HyperswarmCommunicator {
       logger.info(`🔗 加入主题: ${topicHex.substring(0, 8)}...`);
 
       // 创建 topic Buffer
-      const topicBuffer = typeof topic === 'string' 
-        ? Buffer.from(topic, 'hex').slice(0, 32)
-        : topic.slice(0, 32);
+      const topicBuffer =
+        typeof topic === 'string' ? Buffer.from(topic, 'hex').slice(0, 32) : topic.slice(0, 32);
 
       // 加入主题
-      const discovery = (this.swarm as { join: (topic: Buffer, opts: object) => { update: () => void } })
-        .join(topicBuffer, {
-          server: this.config.server,
-          client: this.config.client,
-        });
+      const discovery = (
+        this.swarm as { join: (topic: Buffer, opts: object) => { update: () => void } }
+      ).join(topicBuffer, {
+        server: this.config.server,
+        client: this.config.client,
+      });
 
       // 更新 discovery
       discovery.update();
@@ -279,9 +293,8 @@ export class HyperswarmCommunicator {
     }
 
     try {
-      const topicBuffer = typeof topic === 'string' 
-        ? Buffer.from(topic, 'hex').slice(0, 32)
-        : topic.slice(0, 32);
+      const topicBuffer =
+        typeof topic === 'string' ? Buffer.from(topic, 'hex').slice(0, 32) : topic.slice(0, 32);
 
       (this.swarm as { leave: (topic: Buffer) => void }).leave(topicBuffer);
       this.topics.delete(topicHex);
@@ -312,8 +325,9 @@ export class HyperswarmCommunicator {
       logger.info(`🔌 连接到节点: ${keyHex.substring(0, 8)}...`);
 
       // 连接到对等节点
-      const peer = (this.swarm as { connect: (key: Buffer) => { on: Function } })
-        .connect(typeof publicKey === 'string' ? Buffer.from(publicKey, 'hex') : publicKey);
+      const peer = (this.swarm as { connect: (key: Buffer) => { on: Function } }).connect(
+        typeof publicKey === 'string' ? Buffer.from(publicKey, 'hex') : publicKey
+      );
 
       // 创建连接对象
       const conn: P2PConnection = {
@@ -358,18 +372,13 @@ export class HyperswarmCommunicator {
   /**
    * 发送消息到连接
    */
-  public async sendToConnection(
-    connectionId: string,
-    data: Uint8Array | string
-  ): Promise<void> {
+  public async sendToConnection(connectionId: string, data: Uint8Array | string): Promise<void> {
     const conn = this.connections.get(connectionId);
     if (!conn) {
       throw new Error('连接不存在');
     }
 
-    const dataBuffer = typeof data === 'string' 
-      ? Buffer.from(data) 
-      : Buffer.from(data);
+    const dataBuffer = typeof data === 'string' ? Buffer.from(data) : Buffer.from(data);
 
     try {
       // 在实际实现中，这里会将数据写入流
@@ -437,10 +446,7 @@ export class HyperswarmCommunicator {
   /**
    * 注册事件处理器
    */
-  public on<K extends keyof HyperswarmEvents>(
-    event: K,
-    handler: HyperswarmEvents[K]
-  ): void {
+  public on<K extends keyof HyperswarmEvents>(event: K, handler: HyperswarmEvents[K]): void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Set());
     }
@@ -450,10 +456,7 @@ export class HyperswarmCommunicator {
   /**
    * 移除事件处理器
    */
-  public off<K extends keyof HyperswarmEvents>(
-    event: K,
-    handler: HyperswarmEvents[K]
-  ): void {
+  public off<K extends keyof HyperswarmEvents>(event: K, handler: HyperswarmEvents[K]): void {
     const handlers = this.eventHandlers.get(event);
     if (handlers) {
       handlers.delete(handler);
@@ -484,10 +487,11 @@ export class HyperswarmCommunicator {
   private setupConnectionHandlers(): void {
     if (!this.swarm) return;
 
-    (this.swarm as { on: (event: string, callback: Function) => void })
-      .on('connection', (conn: unknown, info: { publicKey: Buffer }) => {
+    (this.swarm as { on: (event: string, callback: Function) => void }).on(
+      'connection',
+      (conn: unknown, info: { publicKey: Buffer }) => {
         const publicKey = info.publicKey.toString('hex');
-        
+
         const p2pConn: P2PConnection = {
           id: this.generateId(),
           publicKey,
@@ -503,14 +507,15 @@ export class HyperswarmCommunicator {
 
         logger.info(`🔗 新连接: ${publicKey.substring(0, 8)}...`);
         this.emit('connection', p2pConn, info);
-      });
+      }
+    );
   }
 
   /**
    * 设置流处理器
    */
   private setupStreamHandlers(stream: unknown, conn: P2PConnection): void {
-    const nodeStream = stream as { 
+    const nodeStream = stream as {
       on: (event: string, callback: Function) => void;
       write: (data: Buffer) => void;
     };
@@ -552,8 +557,97 @@ export class HyperswarmCommunicator {
    */
   private generateId(): string {
     return Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map(b => b.toString(16).padStart(2, '0'))
+      .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
+  }
+
+  /**
+   * 对消息内容进行签名
+   */
+  public async signMessage(content: Uint8Array, privateKey: Uint8Array): Promise<Uint8Array> {
+    const keyData = privateKey.slice(0, 32);
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+
+    const signature = await crypto.subtle.sign('HMAC', cryptoKey, content as BufferSource);
+    return new Uint8Array(signature);
+  }
+
+  /**
+   * 验证消息签名
+   */
+  public async verifyMessageSignature(
+    content: Uint8Array,
+    signature: Uint8Array,
+    publicKey: Uint8Array
+  ): Promise<boolean> {
+    try {
+      const keyData = publicKey.slice(0, 32);
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['verify']
+      );
+
+      return await crypto.subtle.verify(
+        'HMAC',
+        cryptoKey,
+        signature as BufferSource,
+        content as BufferSource
+      );
+    } catch (error) {
+      logger.warn(`签名验证失败: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * 创建签名消息
+   */
+  public async createSignedMessage(
+    type: P2PMessageType,
+    content: Uint8Array,
+    fromPublicKey: string,
+    toPublicKey: string | undefined,
+    privateKey: Uint8Array
+  ): Promise<P2PMessage> {
+    const message: P2PMessage = {
+      id: this.generateId(),
+      type,
+      fromPublicKey,
+      toPublicKey,
+      content,
+      timestamp: Date.now(),
+      signature: undefined,
+    };
+
+    // 签名消息内容
+    const signature = await this.signMessage(content, privateKey);
+    message.signature = signature;
+
+    return message;
+  }
+
+  /**
+   * 验证并解析签名消息
+   */
+  public async verifySignedMessage(
+    message: P2PMessage,
+    senderPublicKey: Uint8Array
+  ): Promise<boolean> {
+    if (!message.signature) {
+      logger.warn('消息缺少签名');
+      return false;
+    }
+
+    return this.verifyMessageSignature(message.content, message.signature, senderPublicKey);
   }
 }
 
@@ -572,7 +666,7 @@ export function createTopic(topic: string): Buffer {
   if (/^[0-9a-f]+$/i.test(topic)) {
     return Buffer.from(topic.padEnd(64, '0').slice(0, 64), 'hex');
   }
-  
+
   // 如果是普通字符串，使用 SHA-256 哈希
   // 简化实现：直接使用字符串的前32字节，不足补零
   const buf = Buffer.alloc(32);
@@ -583,17 +677,4 @@ export function createTopic(topic: string): Buffer {
 // ============================================================================
 // 导出
 // ============================================================================
-
-export {
-  HyperswarmCommunicator,
-  createHyperswarmCommunicator,
-  createTopic,
-};
-
-export type {
-  HyperswarmConfig,
-  P2PConnection,
-  P2PNodeAddr,
-  P2PMessage,
-  HyperswarmEvents,
-};
+// 注意: HyperswarmConfig, P2PConnection 等已在声明时导出

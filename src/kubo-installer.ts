@@ -79,7 +79,7 @@ export class KuboInstaller {
       installDir: config?.installDir || this.getDefaultInstallDir(),
       forceReinstall: config?.forceReinstall || false,
       downloadTimeout: config?.downloadTimeout || 300000, // 5 分钟
-      proxyUrl: config?.proxyUrl,
+      proxyUrl: config?.proxyUrl || '',
     };
 
     // 检测平台
@@ -260,7 +260,3 @@ export async function installKubo(config?: KuboInstallerConfig): Promise<Install
 // ============================================================================
 // 导出
 // ============================================================================
-
-export { KuboInstaller };
-export type { InstallationResult, KuboVersion, KuboInstallerConfig };
-export { InstallationStatus };
