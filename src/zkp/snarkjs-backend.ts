@@ -99,6 +99,24 @@ export class SnarkjsBackend {
   }
 
   /**
+   * 初始化后端
+   */
+  public async initialize(): Promise<void> {
+    logger.info('初始化 Snarkjs ZKP 后端...');
+    if (this.config.vkeyPath) {
+      await this.loadVerificationKey();
+    }
+    logger.info('✅ Snarkjs ZKP 后端初始化完成');
+  }
+
+  /**
+   * 检查后端是否可用
+   */
+  public isAvailable(): boolean {
+    return true;
+  }
+
+  /**
    * 加载验证密钥
    */
   public async loadVerificationKey(): Promise<SnarkjsVerificationKey> {
@@ -114,7 +132,7 @@ export class SnarkjsBackend {
       const response = await fetch(this.config.vkeyPath);
       this.verificationKey = await response.json();
       logger.info('✅ 验证密钥加载成功');
-      return this.verificationKey;
+      return this.verificationKey!;
     } catch (error) {
       logger.error(`❌ 加载验证密钥失败: ${error}`);
       throw error;

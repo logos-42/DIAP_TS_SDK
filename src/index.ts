@@ -29,7 +29,6 @@ export type {
   KeyInfo as IpnsKeyInfo,
   IpnsRecordStatus,
 } from './ipns-manager.js';
-export type { IpnsConfig, IpnsPublishResult } from './ipns-manager.js';
 
 // DID 构建器
 export {
@@ -124,7 +123,6 @@ export type { NonceRecord, NonceManagerConfig, NonceValidationResult } from './n
 // 配置管理
 export { ConfigManager, loadConfig, getDefaultConfig, saveConfig } from './config-manager.js';
 export type { DIAPConfig, AgentConfig, IpfsConfig, CacheConfig } from './config-manager.js';
-export type { IpnsConfig, LoggingConfig } from './config-manager.js';
 
 // 实名认证
 export { RealNameAuthManager, createRealNameAuthManager } from './real-name-auth.js';

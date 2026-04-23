@@ -45,6 +45,17 @@ declare module 'bs58' {
   export function decode(input: string): Uint8Array;
 }
 
+// 声明 @iroh-js/client 模块
+declare module '@iroh-js/client' {
+  export class Endpoint {
+    static builder(): EndpointBuilder;
+    bind(): Promise<Endpoint>;
+  }
+  export class EndpointBuilder {
+    bind(): Promise<Endpoint>;
+  }
+}
+
 // 声明 hyperswarm 模块
 declare module 'hyperswarm' {
   export default class Hyperswarm {
@@ -62,7 +73,7 @@ declare module 'hyperswarm' {
 
 // 声明 snarkjs 模块
 declare module 'snarkjs' {
-  export const groth16: {
+  const groth16: {
     fullProve(
       input: any,
       wasmPath: string,
@@ -70,7 +81,7 @@ declare module 'snarkjs' {
     ): Promise<{ proof: any; publicSignals: any }>;
     verify(vKey: any, publicSignals: any, proof: any): Promise<boolean>;
   };
-  export const plonk: {
+  const plonk: {
     fullProve(
       input: any,
       wasmPath: string,
@@ -78,13 +89,15 @@ declare module 'snarkjs' {
     ): Promise<{ proof: any; publicSignals: any }>;
     verify(vKey: any, publicSignals: any, proof: any): Promise<boolean>;
   };
-  export const zkey: {
+  function exportSolidityVerifier(vKey: any, options?: any): Promise<string>;
+  const zkey: {
     loadZKey(path: string): Promise<any>;
   };
-  export const zkevm: {
+  const zkevm: {
     exportSolidityVerifier(vKey: any, options?: any): Promise<string>;
   };
-  export function exportSolidityVerifier(vKey: any, options?: any): Promise<string>;
+
+  export { groth16, plonk, zkey, zkevm, exportSolidityVerifier };
 }
 
 // 声明 multiformats/cid 模块
@@ -99,6 +112,9 @@ declare module 'multiformats/cid' {
     toString(): string;
     toV1(): CID;
   }
-  export function parse(cid: string): CID;
-  export function encode(version: number, codec: string, multihash: any): CID;
+  const CID: {
+    parse(cid: string): CID;
+    encode(version: number, codec: string, multihash: any): CID;
+  };
+  export { CID };
 }
