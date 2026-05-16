@@ -214,7 +214,7 @@ export class HyperswarmCommunicator {
       logger.info('🛑 停止 Hyperswarm P2P 网络...');
 
       // 关闭所有连接
-      for (const [id, conn] of this.connections) {
+      for (const [id] of this.connections) {
         await this.closeConnection(id);
       }
 

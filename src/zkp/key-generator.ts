@@ -65,7 +65,7 @@ export async function ensureZKPKeysExist(
       localStorage.setItem(pkPath, bufferToBase64(keys.provingKey));
       localStorage.setItem(vkPath, bufferToBase64(keys.verificationKey));
       logger.info('✅ ZKP 密钥已保存到 localStorage');
-    } catch (e) {
+} catch {
       logger.warn('⚠️  无法保存到 localStorage');
     }
   }
@@ -191,7 +191,7 @@ export function loadKeysFromStorage(pkPath: string, vkPath: string): ZKPKeyPair 
         verificationKey: base64ToBuffer(vkBase64),
       };
     }
-  } catch (e) {
+  } catch {
     logger.warn('⚠️  从 localStorage 加载密钥失败');
   }
 

@@ -6,18 +6,22 @@
 
 ## 功能特性
 
-- 🔐 密钥管理：Ed25519 密钥对生成、存储和管理
-- 🌐 IPFS 集成：轻量级 Helia 客户端，支持文件上传和检索
-- 🆔 DID 构建：符合 W3C 规范的 DID 文档构建和发布
-- 🔒 零知识证明：基于 o1js 的 ZKP 证明生成和验证
-- 🤖 智能体认证：完整的身份注册和验证流程
-- 🌍 libp2p 网络：点对点网络通信支持
+- 🔐 **密钥管理**：Ed25519 密钥对生成、存储和管理
+- 🌐 **IPFS 集成**：轻量级 Helia 客户端，支持文件上传和检索
+- 🆔 **DID 构建**：符合 W3C 规范的 DID 文档构建和发布
+- 🔒 **零知识证明**：基于 snarkjs 的 ZKP 证明生成和验证
+- 🤖 **智能体认证**：完整的身份注册和验证流程
+- 🌍 **libp2p 网络**：点对点网络通信支持
 
 ## 安装
 
 ```bash
 npm install @diap/sdk
 ```
+
+### Node.js 版本要求
+
+- Node.js >= 18.0.0
 
 ### Windows 用户注意事项
 
@@ -32,15 +36,15 @@ npm install --legacy-peer-deps
 ## 快速开始
 
 ```typescript
-import { AgentAuthManager } from '@diap/sdk';
+import { AgentAuthManager, KeyManager } from '@diap/sdk';
 
 async function main() {
   // 创建认证管理器
   const authManager = await AgentAuthManager.new();
-  
+
   // 创建智能体
   const { agentInfo, keypair, peerId } = authManager.createAgent('MyAgent');
-  
+
   // 注册身份
   const registration = await authManager.registerAgent(agentInfo, keypair, peerId);
   console.log('Agent registered:', registration.did);
@@ -48,6 +52,44 @@ async function main() {
 }
 
 main().catch(console.error);
+```
+
+## API 概览
+
+### 密钥管理
+
+```typescript
+import { KeyManager } from '@diap/sdk';
+
+// 生成密钥对
+const keypair = KeyManager.generate();
+console.log('DID:', keypair.did);
+
+// 签名
+const message = new TextEncoder().encode('Hello DIAP');
+const signature = await KeyManager.sign(keypair, message);
+
+// 验证
+const isValid = await KeyManager.verify(keypair, message, signature);
+```
+
+### ZKP 证明
+
+```typescript
+import { UniversalNoirManager } from '@diap/sdk';
+
+const manager = await UniversalNoirManager.new();
+const info = manager.getBackendInfo();
+console.log('Backend:', info.backendType);
+```
+
+### 配置管理
+
+```typescript
+import { ConfigManager, getDefaultConfig } from '@diap/sdk';
+
+const config = getDefaultConfig();
+const manager = await ConfigManager.load();
 ```
 
 ## 开发

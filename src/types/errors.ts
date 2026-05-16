@@ -9,7 +9,7 @@ export class DIAPError extends Error {
   constructor(
     message: string,
     public code: string,
-    public details?: any
+    public details?: unknown
   ) {
     super(message);
     this.name = 'DIAPError';
@@ -22,7 +22,7 @@ export class DIAPError extends Error {
  * 密钥管理错误
  */
 export class KeyManagementError extends DIAPError {
-  constructor(message: string, details?: any) {
+  constructor(message: string, details?: unknown) {
     super(message, 'KEY_MANAGEMENT_ERROR', details);
     this.name = 'KeyManagementError';
     Object.setPrototypeOf(this, KeyManagementError.prototype);
@@ -33,7 +33,7 @@ export class KeyManagementError extends DIAPError {
  * IPFS 错误
  */
 export class IPFSError extends DIAPError {
-  constructor(message: string, details?: any) {
+  constructor(message: string, details?: unknown) {
     super(message, 'IPFS_ERROR', details);
     this.name = 'IPFSError';
     Object.setPrototypeOf(this, IPFSError.prototype);
@@ -44,7 +44,7 @@ export class IPFSError extends DIAPError {
  * ZKP 错误
  */
 export class ZKPError extends DIAPError {
-  constructor(message: string, details?: any) {
+  constructor(message: string, details?: unknown) {
     super(message, 'ZKP_ERROR', details);
     this.name = 'ZKPError';
     Object.setPrototypeOf(this, ZKPError.prototype);
@@ -55,7 +55,7 @@ export class ZKPError extends DIAPError {
  * DID 错误
  */
 export class DIDError extends DIAPError {
-  constructor(message: string, details?: any) {
+  constructor(message: string, details?: unknown) {
     super(message, 'DID_ERROR', details);
     this.name = 'DIDError';
     Object.setPrototypeOf(this, DIDError.prototype);
@@ -66,7 +66,7 @@ export class DIDError extends DIAPError {
  * 验证错误
  */
 export class VerificationError extends DIAPError {
-  constructor(message: string, details?: any) {
+  constructor(message: string, details?: unknown) {
     super(message, 'VERIFICATION_ERROR', details);
     this.name = 'VerificationError';
     Object.setPrototypeOf(this, VerificationError.prototype);

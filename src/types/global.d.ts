@@ -2,6 +2,8 @@
  * 全局类型声明
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 // 声明 @noble/ed25519 模块
 declare module '@noble/ed25519' {
   export function getPublicKey(privateKey: Uint8Array): Uint8Array;
@@ -59,15 +61,15 @@ declare module '@iroh-js/client' {
 // 声明 hyperswarm 模块
 declare module 'hyperswarm' {
   export default class Hyperswarm {
-    constructor(options?: any);
-    join(topic: Buffer, options?: any): { update: () => void };
+    constructor(options?: Record<string, unknown>);
+    join(topic: Buffer, options?: Record<string, unknown>): { update: () => void };
     leave(topic: Buffer): void;
     connect(peerKey: Buffer): {
-      on: (event: string, cb: Function) => void;
+      on: (event: string, cb: (conn: unknown, info: unknown) => void) => void;
       write: (data: Buffer) => void;
     };
     destroy(): void;
-    on(event: string, callback: (conn: any, info: any) => void): void;
+    on(event: string, callback: (conn: unknown, info: unknown) => void): void;
   }
 }
 
@@ -89,12 +91,12 @@ declare module 'snarkjs' {
     ): Promise<{ proof: any; publicSignals: any }>;
     verify(vKey: any, publicSignals: any, proof: any): Promise<boolean>;
   };
-  function exportSolidityVerifier(vKey: any, options?: any): Promise<string>;
+  function exportSolidityVerifier(vKey: any, options?: Record<string, unknown>): Promise<string>;
   const zkey: {
     loadZKey(path: string): Promise<any>;
   };
   const zkevm: {
-    exportSolidityVerifier(vKey: any, options?: any): Promise<string>;
+    exportSolidityVerifier(vKey: any, options?: Record<string, unknown>): Promise<string>;
   };
 
   export { groth16, plonk, zkey, zkevm, exportSolidityVerifier };
@@ -118,3 +120,5 @@ declare module 'multiformats/cid' {
   };
   export { CID };
 }
+
+/* eslint-enable @typescript-eslint/no-explicit-any */

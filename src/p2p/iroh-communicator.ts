@@ -164,7 +164,7 @@ export class IrohCommunicator {
 
         logger.info(`✅ Iroh P2P 网络已启动`);
         logger.info(`   节点 ID: ${this.nodeAddr}`);
-      } catch (importError) {
+      } catch {
         // Iroh 库未安装，使用模拟模式
         logger.warn('⚠️ @iroh-js/client 未安装，使用模拟模式');
         logger.warn('   安装命令: npm install @iroh-js/client');

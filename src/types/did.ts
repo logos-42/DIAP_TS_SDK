@@ -43,7 +43,7 @@ export interface Service {
   /** 服务类型 */
   type: string;
   /** 服务端点 */
-  serviceEndpoint: any;
+  serviceEndpoint: string | Record<string, unknown>;
   /** PubSub 主题列表（可选） */
   pubsubTopics?: string[];
   /** 网络地址列表（可选） */

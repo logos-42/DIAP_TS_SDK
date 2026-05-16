@@ -18,7 +18,7 @@ export function decodeBase58(encoded: string): Uint8Array {
   try {
     return new Uint8Array(bs58.decode(encoded));
   } catch (error) {
-    throw new Error(`Invalid Base58 string: ${error}`);
+    throw new Error(`Invalid Base58 string: ${error}`, { cause: error });
   }
 }
 
@@ -36,7 +36,7 @@ export function decodeBase64(encoded: string): Uint8Array {
   try {
     return new Uint8Array(Buffer.from(encoded, 'base64'));
   } catch (error) {
-    throw new Error(`Invalid Base64 string: ${error}`);
+    throw new Error(`Invalid Base64 string: ${error}`, { cause: error });
   }
 }
 
@@ -56,7 +56,7 @@ export function decodeHex(encoded: string): Uint8Array {
     const hex = encoded.startsWith('0x') ? encoded.slice(2) : encoded;
     return new Uint8Array(Buffer.from(hex, 'hex'));
   } catch (error) {
-    throw new Error(`Invalid Hex string: ${error}`);
+    throw new Error(`Invalid Hex string: ${error}`, { cause: error });
   }
 }
 
@@ -79,6 +79,6 @@ export function decodeMultibase(encoded: string): Uint8Array {
     // 移除 z 前缀，然后 base58 解码
     return decodeBase58(encoded.slice(1));
   } catch (error) {
-    throw new Error(`Invalid Multibase string: ${error}`);
+    throw new Error(`Invalid Multibase string: ${error}`, { cause: error });
   }
 }
