@@ -6,6 +6,8 @@
 
 import * as ed25519 from '@noble/ed25519';
 import { sha256 } from '@noble/hashes/sha256';
+import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import type { EncryptedPeerID } from '../types/did.js';
 import { KeyManagementError } from '../types/errors.js';
 import { logger } from '../utils/logger.js';
@@ -151,11 +153,9 @@ export function verifyEncryptedPeerIdOwnership(
  * AES-256-GCM 加密
  */
 function aesGcmEncrypt(plaintext: Uint8Array, key: Uint8Array): { ciphertext: Uint8Array; nonce: Uint8Array } {
-  const crypto = require('crypto');
+  const nonce = randomBytes(12);
 
-  const nonce = crypto.randomBytes(12);
-
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, nonce);
+  const cipher = createCipheriv('aes-256-gcm', key, nonce);
 
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
 
@@ -169,9 +169,7 @@ function aesGcmEncrypt(plaintext: Uint8Array, key: Uint8Array): { ciphertext: Ui
  * AES-256-GCM 解密
  */
 function aesGcmDecrypt(ciphertext: Uint8Array, key: Uint8Array, nonce: Uint8Array): Uint8Array {
-  const crypto = require('crypto');
-
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, nonce);
+  const decipher = createDecipheriv('aes-256-gcm', key, nonce);
 
   const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 
