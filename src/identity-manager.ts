@@ -131,7 +131,7 @@ export class IdentityManager {
     logger.warn('⚠️ generate_zkp_proof已废弃，请使用Noir ZKP');
 
     const didJson = JSON.stringify(didDocument);
-    const didDocHash = blake2s(new TextEncoder().encode(didJson), 32);
+    const didDocHash = blake2s(new TextEncoder().encode(didJson), { dkLen: 32 });
 
     const combined = new Uint8Array(didJson.length + nonce.length + keypair.privateKey.length);
     let offset = 0;
@@ -141,7 +141,7 @@ export class IdentityManager {
     offset += nonce.length;
     combined.set(keypair.privateKey, offset);
 
-    const proofHash = blake2s(combined, 32);
+    const proofHash = blake2s(combined, { dkLen: 32 });
 
     return new Uint8Array(proofHash);
   }
@@ -163,7 +163,7 @@ export class IdentityManager {
     verificationDetails.push(`✓ DID文档获取成功: ${didDocument.id}`);
 
     const didJson = JSON.stringify(didDocument);
-    blake2s(new TextEncoder().encode(didJson), 32);
+    blake2s(new TextEncoder().encode(didJson), { dkLen: 32 });
     verificationDetails.push('✓ DID文档哈希计算完成');
 
     const publicKey = this.extractPublicKey(didDocument);

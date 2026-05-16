@@ -3,9 +3,7 @@
  * 负责密钥的生成、存储、加载和管理
  */
 
-import * as ed25519 from '@noble/ed25519';
-import { hashes } from '@noble/ed25519';
-import { sha512 } from '@noble/hashes/sha2.js';
+import ed25519 from '@noble/ed25519';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import type { KeyPair, KeyFile, KeyBackup } from './types/key.js';
@@ -15,8 +13,6 @@ import { encryptAES256GCM, decryptAES256GCM, deriveKey, generateRandomBytes } fr
 import { encodeBase58 } from './utils/encoding.js';
 import { logger } from './utils/logger.js';
 
-hashes.sha512 = sha512;
-
 /**
  * 密钥管理器
  */
@@ -24,19 +20,19 @@ export class KeyManager {
   /**
    * 生成新的 Ed25519 密钥对
    */
-  static generate(): KeyPair {
+  static async generateAsync(): Promise<KeyPair> {
     try {
       // 生成32字节随机私钥
       const privateKey = ed25519.utils.randomSecretKey();
-      
+
       // 从私钥派生公钥
-      const publicKey = ed25519.getPublicKey(privateKey);
-      
+      const publicKey = await ed25519.getPublicKeyAsync(privateKey);
+
       // 派生 did:key 格式的 DID
       const did = KeyManager.deriveDIDKey(publicKey);
-      
+
       logger.debug('Generated new Ed25519 keypair', { did });
-      
+
       return {
         privateKey,
         publicKey,
@@ -50,18 +46,18 @@ export class KeyManager {
   /**
    * 从私钥加载密钥对
    */
-  static fromPrivateKey(privateKey: Uint8Array): KeyPair {
+  static async fromPrivateKeyAsync(privateKey: Uint8Array): Promise<KeyPair> {
     if (privateKey.length !== 32) {
       throw new KeyManagementError('Private key must be 32 bytes');
     }
 
     try {
       // 从私钥派生公钥
-      const publicKey = ed25519.getPublicKey(privateKey);
-      
+      const publicKey = await ed25519.getPublicKeyAsync(privateKey);
+
       // 派生 did:key 格式的 DID
       const did = KeyManager.deriveDIDKey(publicKey);
-      
+
       return {
         privateKey,
         publicKey,
@@ -79,15 +75,15 @@ export class KeyManager {
     try {
       const content = await fs.readFile(path, 'utf-8');
       const keyFile: KeyFile = JSON.parse(content);
-      
+
       // 解码私钥
       const privateKeyBytes = decodeHex(keyFile.privateKey);
-      
+
       if (privateKeyBytes.length !== 32) {
         throw new KeyManagementError('Invalid private key length in file');
       }
-      
-      return KeyManager.fromPrivateKey(privateKeyBytes);
+
+      return KeyManager.fromPrivateKeyAsync(privateKeyBytes);
     } catch (error) {
       if (error instanceof KeyManagementError) {
         throw error;
@@ -211,7 +207,7 @@ export class KeyManager {
         throw new KeyManagementError('Invalid private key length in backup');
       }
       
-      return KeyManager.fromPrivateKey(privateKeyBytes);
+      return KeyManager.fromPrivateKeyAsync(privateKeyBytes);
     } catch (error) {
       if (error instanceof KeyManagementError) {
         throw error;
@@ -225,7 +221,7 @@ export class KeyManager {
    */
   static async sign(keypair: KeyPair, data: Uint8Array): Promise<Uint8Array> {
     try {
-      const signature = await ed25519.sign(data, keypair.privateKey);
+      const signature = await ed25519.signAsync(data, keypair.privateKey);
       return signature;
     } catch (error) {
       throw new KeyManagementError('Failed to sign data', { originalError: error });
@@ -237,7 +233,7 @@ export class KeyManager {
    */
   static async verify(keypair: KeyPair, data: Uint8Array, signature: Uint8Array): Promise<boolean> {
     try {
-      const isValid = await ed25519.verify(signature, data, keypair.publicKey);
+      const isValid = await ed25519.verifyAsync(signature, data, keypair.publicKey);
       return isValid;
     } catch (error) {
       logger.warn('Signature verification failed', { error });

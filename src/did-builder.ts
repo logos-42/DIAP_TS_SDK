@@ -329,11 +329,11 @@ export async function verifyDIDDocumentIntegrity(
         break;
       case 0xb220:
         logger.debug('  使用Blake2b-512计算哈希');
-        computedHash = new Uint8Array(blake2b(new TextEncoder().encode(json), 64));
+        computedHash = new Uint8Array(blake2b(new TextEncoder().encode(json), { dkLen: 64 }));
         break;
       case 0xb260:
         logger.debug('  使用Blake2s-256计算哈希');
-        computedHash = new Uint8Array(blake2s(new TextEncoder().encode(json), 32));
+        computedHash = new Uint8Array(blake2s(new TextEncoder().encode(json), { dkLen: 32 }));
         break;
       default:
         logger.warn(`  ⚠️ 不支持的哈希算法: 0x${hashCode.toString(16)}`);

@@ -29,13 +29,13 @@ export class SimplifiedBackend {
         timestamp: Date.now(),
       });
 
-      const proof = sha256(proofData);
+      const proof = sha256(new TextEncoder().encode(proofData));
       const publicInputs = sha256(
-        JSON.stringify({
+        new TextEncoder().encode(JSON.stringify({
           expectedDidHash: inputs.expectedDidHash,
           publicKeyHash: inputs.publicKeyHash,
           nonceHash: inputs.nonceHash,
-        })
+        }))
       );
 
       const generationTime = Date.now() - startTime;

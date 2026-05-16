@@ -4,7 +4,7 @@
  * 基于 Rust SDK 的实现逻辑
  */
 
-import * as ed25519 from '@noble/ed25519';
+import ed25519 from '@noble/ed25519';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { Buffer } from 'node:buffer';
@@ -31,7 +31,7 @@ function deriveAesKeyFromEd25519(signingKey: Uint8Array): Uint8Array {
  * 加密 PeerID
  * 使用 Ed25519 私钥派生 AES-256 密钥加密 PeerID
  */
-export function encryptPeerId(signingKey: Uint8Array, peerId: string): EncryptedPeerID {
+export async function encryptPeerId(signingKey: Uint8Array, peerId: string): Promise<EncryptedPeerID> {
   if (signingKey.length !== 32) {
     throw new KeyManagementError('Signing key must be 32 bytes');
   }
@@ -46,7 +46,7 @@ export function encryptPeerId(signingKey: Uint8Array, peerId: string): Encrypted
   sigData.set(ciphertext, 0);
   sigData.set(nonce, ciphertext.length);
 
-  const signature = ed25519.sign(sigData, signingKey);
+  const signature = await ed25519.signAsync(sigData, signingKey);
 
   logger.debug('✓ PeerID已加密（AES-256-GCM）');
   logger.debug(`  原始PeerID: ${peerId}`);
@@ -65,10 +65,10 @@ export function encryptPeerId(signingKey: Uint8Array, peerId: string): Encrypted
 /**
  * 使用密钥解密 PeerID
  */
-export function decryptPeerIdWithSecret(
+export async function decryptPeerIdWithSecret(
   signingKey: Uint8Array,
   encrypted: EncryptedPeerID
-): string {
+): Promise<string> {
   logger.info('🔓 解密PeerID（持有私钥）');
 
   if (signingKey.length !== 32) {
@@ -80,8 +80,8 @@ export function decryptPeerIdWithSecret(
     sigData.set(encrypted.ciphertext, 0);
     sigData.set(encrypted.nonce, encrypted.ciphertext.length);
 
-    const publicKey = ed25519.getPublicKey(signingKey);
-    const isValid = ed25519.verifySync(encrypted.signature, sigData, publicKey);
+    const publicKey = await ed25519.getPublicKeyAsync(signingKey);
+    const isValid = await ed25519.verifyAsync(encrypted.signature, sigData, publicKey);
 
     if (!isValid) {
       throw new KeyManagementError('签名验证失败：数据可能被篡改');
@@ -109,11 +109,11 @@ export function decryptPeerIdWithSecret(
 /**
  * 验证 PeerID 签名
  */
-export function verifyPeerIdSignature(
+export async function verifyPeerIdSignature(
   verifyingKey: Uint8Array,
   encrypted: EncryptedPeerID,
   _claimedPeerId: string
-): boolean {
+): Promise<boolean> {
   logger.info('验证PeerID签名（公开验证）');
 
   try {
@@ -121,7 +121,7 @@ export function verifyPeerIdSignature(
     sigData.set(encrypted.ciphertext, 0);
     sigData.set(encrypted.nonce, encrypted.ciphertext.length);
 
-    const isValid = ed25519.verifySync(encrypted.signature, sigData, verifyingKey);
+    const isValid = await ed25519.verifyAsync(encrypted.signature, sigData, verifyingKey);
 
     if (isValid) {
       logger.info('✓ PeerID签名验证通过');
@@ -139,11 +139,11 @@ export function verifyPeerIdSignature(
 /**
  * 验证 PeerID 所有权（通过签名）
  */
-export function verifyEncryptedPeerIdOwnership(
+export async function verifyEncryptedPeerIdOwnership(
   verifyingKey: Uint8Array,
   encrypted: EncryptedPeerID,
   claimedPeerId: string
-): boolean {
+): Promise<boolean> {
   logger.info('验证PeerID所有权（通过签名）');
 
   return verifyPeerIdSignature(verifyingKey, encrypted, claimedPeerId);
