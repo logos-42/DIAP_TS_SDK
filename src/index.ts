@@ -164,11 +164,23 @@ export type {
   VerificationStatus as BidirectionalVerificationStatus,
 } from './ipfs-bidirectional-verification.js';
 
+// IPFS 多节点发布器
+export {
+  IpfsMultiPublisher,
+  createMultiPublisher,
+  isKuboInstalled,
+  startLocalKubo,
+} from './ipfs-multi-publisher.js';
+export type {
+  MultiNodePublishResult,
+  IpfsNodeConfig as MultiPublisherNodeConfig,
+} from './ipfs-multi-publisher.js';
+
 // Kubo 安装器
 export {
   KuboInstaller,
   createKuboInstaller,
-  isKuboInstalled,
+  isKuboInstalled as isKuboInstalledSync,
   installKubo,
 } from './kubo-installer.js';
 export type {

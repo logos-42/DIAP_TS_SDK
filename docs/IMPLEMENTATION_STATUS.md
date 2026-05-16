@@ -38,7 +38,8 @@
   - [x] upload() - 上传到 IPFS
   - [x] get() / getFromGateway() - 从 IPFS 获取
   - [x] pin() - 固定内容
-  - [x] publishIpns() - IPNS 发布（占位符）
+  - [x] publishIpns() - IPNS 发布
+  - [x] publishAfterUpload() - 上传后自动发布 IPNS
 
 ### ✅ 6. DID 构建器模块 (Task 6.1, 6.2, 6.3, 6.4)
 - [x] `src/libp2p/encrypted-peer-id.ts` - PeerID 加密工具
@@ -98,7 +99,7 @@
 ### ⚠️ 可选模块
 - [ ] libp2p 节点实现（完整版本）
 - [ ] 配置管理器（ConfigManager）
-- [ ] IPNS 完整实现
+- [x] IPNS 完整实现 - DID 发布流程已集成 IPNS
 - [ ] o1js 电路完整实现（需要更多 o1js API 了解）
 
 ## 技术要点
@@ -128,8 +129,7 @@
 ## 已知限制
 
 1. **o1js 电路**: o1js API 可能需要进一步调整以完全对应 Rust Noir 电路
-2. **IPNS 功能**: 当前为占位符实现，需要完整的 libp2p 集成
-3. **PeerID 加密**: tag 提取逻辑需要完善（当前简化版本）
-4. **ZKP 验证**: o1js 验证逻辑需要进一步实现
+2. **PeerID 加密**: tag 提取逻辑需要完善（当前简化版本）
+3. **ZKP 验证**: o1js 验证逻辑需要进一步实现
 
 总体而言，核心功能已经实现，SDK 可以用于基本的身份认证和 DID 管理场景。
