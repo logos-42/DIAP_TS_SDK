@@ -7,7 +7,7 @@ pnpm-lock.yaml
 # Build output
 dist/
 *.tsbuildinfo
-
+.kilo
 # Testing
 coverage/
 .nyc_output/

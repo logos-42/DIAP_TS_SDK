@@ -17,7 +17,8 @@ import { DIDError } from './types/errors.js';
 import { encodeBase58, encodeBase64 } from './utils/encoding.js';
 import { encryptPeerId } from './libp2p/encrypted-peer-id.js';
 import { logger } from './utils/logger.js';
-import { sha256, sha512 } from '@noble/hashes/sha256';
+import { sha256 } from '@noble/hashes/sha256';
+import { sha512 } from '@noble/hashes/sha512';
 import { blake2b, blake2s } from '@noble/hashes/blake2';
 
 /**
