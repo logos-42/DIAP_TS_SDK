@@ -12,7 +12,7 @@ import { UniversalNoirManager } from './zkp/universal-manager.js';
 import type { NoirProverInputs } from './types/zkp.js';
 import { DIDError, VerificationError } from './types/errors.js';
 import { decryptPeerIdWithSecret, verifyPeerIdSignature } from './libp2p/encrypted-peer-id.js';
-import { sha256 } from '@noble/hashes/sha256';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { blake2s } from '@noble/hashes/blake2';
 import { encodeBase64, decodeBase64, decodeMultibase } from './utils/encoding.js';
 import { logger } from './utils/logger.js';

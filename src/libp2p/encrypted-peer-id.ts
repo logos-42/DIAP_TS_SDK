@@ -5,7 +5,7 @@
  */
 
 import * as ed25519 from '@noble/ed25519';
-import { sha256 } from '@noble/hashes/sha256';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { EncryptedPeerID } from '../types/did.js';

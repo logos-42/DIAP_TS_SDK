@@ -5,7 +5,7 @@
 
 import type { NoirProverInputs, NoirProofResult, NoirVerificationResult } from '../types/zkp.js';
 import { ZKPError } from '../types/errors.js';
-import { sha256 } from '@noble/hashes/sha256';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { logger } from '../utils/logger.js';
 
 /**

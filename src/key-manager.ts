@@ -4,7 +4,7 @@
  */
 
 import * as ed25519 from '@noble/ed25519';
-import { sha512 } from '@noble/hashes/sha512';
+import { sha512 } from '@noble/hashes/sha2.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import type { KeyPair, KeyFile, KeyBackup } from './types/key.js';
@@ -15,7 +15,11 @@ import { encodeBase58 } from './utils/encoding.js';
 import { logger } from './utils/logger.js';
 
 // Initialize noble/ed25519 with synchronous hash functions
-ed25519.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed25519.etc.concatBytes(...m));
+Object.defineProperty(ed25519.etc, 'sha512Sync', {
+  value: (...m: Uint8Array[]) => sha512(ed25519.etc.concatBytes(...m)),
+  writable: true,
+  configurable: true,
+});
 
 /**
  * 密钥管理器
