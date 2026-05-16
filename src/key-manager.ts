@@ -4,7 +4,8 @@
  */
 
 import * as ed25519 from '@noble/ed25519';
-import { sha512 } from '@noble/hashes/sha2';
+import { hashes } from '@noble/ed25519';
+import { sha512 } from '@noble/hashes/sha2.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import type { KeyPair, KeyFile, KeyBackup } from './types/key.js';
@@ -14,8 +15,7 @@ import { encryptAES256GCM, decryptAES256GCM, deriveKey, generateRandomBytes } fr
 import { encodeBase58 } from './utils/encoding.js';
 import { logger } from './utils/logger.js';
 
-// Initialize noble/ed25519 with synchronous hash functions
-ed25519.hashes.sha512 = sha512;
+hashes.sha512 = sha512;
 
 /**
  * 密钥管理器
@@ -27,7 +27,7 @@ export class KeyManager {
   static generate(): KeyPair {
     try {
       // 生成32字节随机私钥
-      const privateKey = ed25519.utils.randomPrivateKey();
+      const privateKey = ed25519.utils.randomSecretKey();
       
       // 从私钥派生公钥
       const publicKey = ed25519.getPublicKey(privateKey);
