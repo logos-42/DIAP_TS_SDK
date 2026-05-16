@@ -168,12 +168,17 @@ export type {
 export {
   IpfsMultiPublisher,
   createMultiPublisher,
+  createPinataPublisher,
+  createInfuraPublisher,
+  createWeb3StoragePublisher,
+  createCustomPublisher,
   isKuboInstalled,
   startLocalKubo,
 } from './ipfs-multi-publisher.js';
 export type {
   MultiNodePublishResult,
   IpfsNodeConfig as MultiPublisherNodeConfig,
+  GatewayCredentials,
 } from './ipfs-multi-publisher.js';
 
 // Kubo 安装器

@@ -92,6 +92,79 @@ const config = getDefaultConfig();
 const manager = await ConfigManager.load();
 ```
 
+### IPFS 多节点发布
+
+SDK 支持多节点 IPNS 发布，可结合本地节点和云服务实现高可用。
+
+#### 本地节点
+
+```typescript
+import { createMultiPublisher } from '@diap/sdk';
+
+const publisher = await createMultiPublisher('my-key');
+const result = await publisher.publishMultiNode('Qm...');
+
+console.log('IPNS Name:', result.ipnsName);
+console.log('Published to:', result.publishedNodes);
+console.log('Failed:', result.failedNodes);
+```
+
+#### Pinata
+
+```typescript
+import { createPinataPublisher } from '@diap/sdk';
+
+const publisher = await createPinataPublisher(
+  'my-key',
+  'PINATA_API_KEY',
+  'PINATA_SECRET_KEY'
+);
+
+const result = await publisher.publishMultiNode('Qm...');
+```
+
+#### Infura
+
+```typescript
+import { createInfuraPublisher } from '@diap/sdk';
+
+const publisher = await createInfuraPublisher(
+  'my-key',
+  'INFURA_PROJECT_ID',
+  'INFURA_PROJECT_SECRET'
+);
+
+const result = await publisher.publishMultiNode('Qm...');
+```
+
+#### Web3.Storage
+
+```typescript
+import { createWeb3StoragePublisher } from '@diap/sdk';
+
+const publisher = await createWeb3StoragePublisher(
+  'my-key',
+  'WEB3_STORAGE_TOKEN'
+);
+
+const result = await publisher.publishMultiNode('Qm...');
+```
+
+#### 自定义网关
+
+```typescript
+import { createCustomPublisher } from '@diap/sdk';
+
+const publisher = await createCustomPublisher(
+  'my-key',
+  'https://your-gateway.com/api/v0',
+  'https://your-gateway.com',
+  { Authorization: 'Bearer YOUR_TOKEN' }
+);
+
+const result = await publisher.publishMultiNode('Qm...');
+```
+
 ## 开发
 
 ```bash

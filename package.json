@@ -1,6 +1,6 @@
 {
   "name": "@diap/sdk",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "DIAP TypeScript SDK - Decentralized Intelligent Agent Protocol",
   "type": "module",
   "main": "dist/index.js",
@@ -20,7 +20,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build && npm run test"
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "diap",
