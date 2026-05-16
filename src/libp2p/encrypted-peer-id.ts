@@ -46,7 +46,7 @@ export function encryptPeerId(signingKey: Uint8Array, peerId: string): Encrypted
   sigData.set(ciphertext, 0);
   sigData.set(nonce, ciphertext.length);
 
-  const signature = ed25519.signSync(sigData, signingKey);
+  const signature = ed25519.sign(sigData, signingKey);
 
   logger.debug('✓ PeerID已加密（AES-256-GCM）');
   logger.debug(`  原始PeerID: ${peerId}`);
