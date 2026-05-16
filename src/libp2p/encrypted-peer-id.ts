@@ -4,13 +4,21 @@
  * 基于 Rust SDK 的实现逻辑
  */
 
-import ed25519 from '@noble/ed25519';
+import * as ed25519 from '@noble/ed25519';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { EncryptedPeerID } from '../types/did.js';
 import { KeyManagementError } from '../types/errors.js';
 import { logger } from '../utils/logger.js';
+
+type NobleEd25519 = typeof ed25519;
+// @ts-ignore - types incorrect for these async methods
+const ed = ed25519 as NobleEd25519 & {
+  getPublicKeyAsync: (key: Uint8Array) => Promise<Uint8Array>;
+  signAsync: (msg: Uint8Array, key: Uint8Array) => Promise<Uint8Array>;
+  verifyAsync: (sig: Uint8Array, msg: Uint8Array, key: Uint8Array) => Promise<boolean>;
+};
 
 /**
  * 从 Ed25519 私钥派生 AES-256 密钥
@@ -46,7 +54,7 @@ export async function encryptPeerId(signingKey: Uint8Array, peerId: string): Pro
   sigData.set(ciphertext, 0);
   sigData.set(nonce, ciphertext.length);
 
-  const signature = await ed25519.signAsync(sigData, signingKey);
+  const signature = await ed.signAsync(sigData, signingKey);
 
   logger.debug('✓ PeerID已加密（AES-256-GCM）');
   logger.debug(`  原始PeerID: ${peerId}`);
@@ -80,8 +88,8 @@ export async function decryptPeerIdWithSecret(
     sigData.set(encrypted.ciphertext, 0);
     sigData.set(encrypted.nonce, encrypted.ciphertext.length);
 
-    const publicKey = await ed25519.getPublicKeyAsync(signingKey);
-    const isValid = await ed25519.verifyAsync(encrypted.signature, sigData, publicKey);
+    const publicKey = await ed.getPublicKeyAsync(signingKey);
+    const isValid = await ed.verifyAsync(encrypted.signature, sigData, publicKey);
 
     if (!isValid) {
       throw new KeyManagementError('签名验证失败：数据可能被篡改');
@@ -121,7 +129,7 @@ export async function verifyPeerIdSignature(
     sigData.set(encrypted.ciphertext, 0);
     sigData.set(encrypted.nonce, encrypted.ciphertext.length);
 
-    const isValid = await ed25519.verifyAsync(encrypted.signature, sigData, verifyingKey);
+    const isValid = await ed.verifyAsync(encrypted.signature, sigData, verifyingKey);
 
     if (isValid) {
       logger.info('✓ PeerID签名验证通过');

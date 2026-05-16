@@ -177,7 +177,7 @@ export class DIDBuilder {
       logger.info('🚀 开始DID发布流程（简化版）');
 
       logger.info('步骤1: 加密libp2p PeerID');
-      const encryptedPeerId = encryptPeerId(keypair.privateKey, peerId);
+      const encryptedPeerId: EncryptedPeerID = await encryptPeerId(keypair.privateKey, peerId);
       logger.info('✓ PeerID已加密');
 
       logger.info('步骤2: 构建DID文档');
@@ -220,7 +220,7 @@ export class DIDBuilder {
     logger.info('🚀 开始DID发布流程（包含PubSub信息）');
 
     logger.info('步骤1: 加密libp2p PeerID');
-    const encryptedPeerId = encryptPeerId(keypair.privateKey, peerId);
+    const encryptedPeerId: EncryptedPeerID = await encryptPeerId(keypair.privateKey, peerId);
     logger.info('✓ PeerID已加密');
 
     logger.info('步骤2: 构建包含PubSub信息的DID文档');

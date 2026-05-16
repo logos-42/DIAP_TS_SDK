@@ -194,11 +194,11 @@ export class IdentityManager {
   /**
    * 验证 PeerID 签名
    */
-  verifyPeerId(
+  async verifyPeerId(
     didDocument: DIDDocument,
     encrypted: EncryptedPeerID,
     claimedPeerId: string
-  ): boolean {
+  ): Promise<boolean> {
     try {
       const publicKeyBytes = this.extractPublicKey(didDocument);
 
@@ -213,7 +213,8 @@ export class IdentityManager {
         keyBytes = publicKeyBytes;
       }
 
-      return verifyPeerIdSignature(keyBytes, encrypted, claimedPeerId);
+      const isValid: boolean = await verifyPeerIdSignature(keyBytes, encrypted, claimedPeerId);
+      return isValid;
     } catch (error) {
       logger.warn('PeerID verification failed', { error });
       return false;
