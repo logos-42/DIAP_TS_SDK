@@ -74,11 +74,21 @@ declare module 'libp2p' {
     peerDiscovery?: any[];
     [key: string]: any;
   }
+  export interface Connection {
+    remotePeer: any;
+    remoteAddr: {
+      toString(): string;
+      toBytes(): Uint8Array;
+      toArray(): { toString(): string }[];
+    };
+    remoteAddrProtocols: string[];
+    close(): Promise<void>;
+  }
   export class Libp2p {
     constructor(options?: Libp2pOptions);
     start(): Promise<void>;
     stop(): Promise<void>;
-    dial(peer: any): Promise<any>;
+    dial(peer: any): Promise<Connection>;
     hangUp(peer: any): Promise<void>;
     peerStore: any;
     multiaddrs: any;
@@ -88,7 +98,7 @@ declare module 'libp2p' {
     peerId?: any;
     addEventListener(event: string, handler: any): void;
     removeEventListener(event: string, handler: any): void;
-    getMultiaddrs(): any;
+    getMultiaddrs(): any[];
   }
   export function createLibp2p(options?: Libp2pOptions): Promise<Libp2p>;
 }
