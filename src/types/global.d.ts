@@ -13,12 +13,15 @@ declare module '@libp2p/interface-peer-id' {
 
 declare module '@libp2p/interface-connection' {
   export interface Connection {
-    remotePeer(): PeerId;
-    remoteAddr(): Multiaddr;
+    remotePeer: PeerId;
+    remoteAddr: Multiaddr;
+    remoteAddrProtocols: string[];
     close(): Promise<void>;
   }
   export interface Multiaddr {
     toString(): string;
+    toBytes(): Uint8Array;
+    toArray(): Multiaddr[];
   }
   export interface PeerId {
     toString(): string;
@@ -49,8 +52,11 @@ declare module '@chainsafe/libp2p-gossipsub' {
     start(): Promise<void>;
     stop(): Promise<void>;
     subscribe(topic: string): void;
+    unsubscribe(topic: string): void;
     publish(topic: string, data: Uint8Array): Promise<void>;
     on(event: string, handler: (topic: string, msg: any) => void): void;
+    addEventListener(event: string, handler: (evt: any) => void): void;
+    removeEventListener(event: string, handler: (evt: any) => void): void;
   }
 }
 
@@ -93,9 +99,44 @@ declare module '@multiformats/multiaddr' {
     toString(): string;
     toBytes(): Uint8Array;
     toArray(): Multiaddr[];
-    static fromString(addr: string): Multiaddr;
   }
   export function multiaddr(addr: string | Uint8Array): Multiaddr;
+}
+
+declare module '@libp2p/interface-connection' {
+  export interface Connection {
+    remotePeer: PeerId;
+    remoteAddr: Multiaddr;
+    remoteAddrProtocols: string[];
+    close(): Promise<void>;
+  }
+  export interface Multiaddr {
+    toString(): string;
+    toBytes(): Uint8Array;
+    toArray(): Multiaddr[];
+  }
+  export interface PeerId {
+    toString(): string;
+    toBytes(): Uint8Array;
+  }
+}
+
+declare module '@libp2p/interface-connection' {
+  export interface Connection {
+    remotePeer: PeerId;
+    remoteAddr: Multiaddr;
+    remoteAddrProtocols: string[];
+    close(): Promise<void>;
+  }
+  export interface Multiaddr {
+    toString(): string;
+    toBytes(): Uint8Array;
+    toArray(): Multiaddr[];
+  }
+  export interface PeerId {
+    toString(): string;
+    toBytes(): Uint8Array;
+  }
 }
 
 declare module '@libp2p/tcp' {
