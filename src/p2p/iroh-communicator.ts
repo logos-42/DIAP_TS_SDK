@@ -2,7 +2,7 @@
  * DIAP TypeScript SDK - Iroh P2P 通信器
  *
  * 基于 Iroh 实现可靠的 P2P 通信
- * 支持端到端加密、QUIC 传输、心跳监控
+ * 支持端到端加密、QUIC 传输、心跳监控、NAT 穿透
  *
  * 安装: npm install @iroh-js/client
  *
@@ -11,12 +11,12 @@
  * import { IrohCommunicator } from '@diap/sdk';
  *
  * const iroh = new IrohCommunicator({
- *   listenAddr: '0.0.0.0:0',
+ *   relays: ['https://relay1.iroh.example.com'],
  *   maxConnections: 100,
  * });
  *
  * await iroh.start();
- * await iroh.connectToNode(nodeAddr);
+ * await iroh.connectToNode(nodeId);
  * await iroh.sendMessage(nodeId, message);
  * ```
  */
@@ -35,8 +35,8 @@ export interface IrohConfig {
   maxConnections?: number;
   /** 连接超时（秒） */
   connectionTimeout?: number;
-  /** 启用中继 */
-  enableRelay?: boolean;
+  /** 中继服务器地址列表 */
+  relays?: string[];
   /** 启用 NAT 穿透 */
   enableNatTraversal?: boolean;
 }
@@ -110,34 +110,34 @@ export interface ConnectionStats {
 /**
  * Iroh P2P 通信器
  *
- * 提供与 Iroh 网络的集成
- * 注意：完整实现需要 @iroh-js/client 库
+ * 基于 Iroh 实现可靠的 P2P 通信
+ * 使用 QUIC 协议，支持 NAT 穿透和端到端加密
  */
 export class IrohCommunicator {
   private config: Required<IrohConfig>;
-  private endpoint: unknown | null = null;
-  private connections: Map<string, IrohConnection> = new Map();
-  private nodeAddr: string | null = null;
+  private endpoint: unknown = null;
+  private connections: Map<string, IrohCommunicatorConnection> = new Map();
+  private nodeId: string | null = null;
   private isRunning: boolean = false;
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
-  /**
-   * 创建 Iroh 通信器
-   */
   constructor(config: IrohConfig = {}) {
     this.config = {
       listenAddr: config.listenAddr ?? '0.0.0.0:0',
       dataDir: config.dataDir ?? '',
       maxConnections: config.maxConnections ?? 100,
       connectionTimeout: config.connectionTimeout ?? 30,
-      enableRelay: config.enableRelay ?? true,
+      relays: config.relays ?? [],
       enableNatTraversal: config.enableNatTraversal ?? true,
     };
 
     logger.info('🔧 Iroh P2P 通信器已创建');
-    logger.info(`  监听地址: ${this.config.listenAddr}`);
     logger.info(`  最大连接数: ${this.config.maxConnections}`);
     logger.info(`  连接超时: ${this.config.connectionTimeout}s`);
+    logger.info(`  NAT 穿透: ${this.config.enableNatTraversal ? '启用' : '禁用'}`);
+    if (this.config.relays.length > 0) {
+      logger.info(`  中继服务器: ${this.config.relays.length} 个`);
+    }
   }
 
   /**
@@ -152,42 +152,91 @@ export class IrohCommunicator {
     try {
       logger.info('🚀 启动 Iroh P2P 网络...');
 
-      // 尝试动态导入 Iroh
-      try {
-        const { Endpoint } = await import('@iroh-js/client');
+      const irohModule = await import('@iroh-js/client');
+      const Endpoint = irohModule.Endpoint;
 
-        // 创建端点
-        this.endpoint = await Endpoint.builder().bind();
-
-        // 获取本地节点地址
-        this.nodeAddr = this.getNodeAddr();
-
-        logger.info(`✅ Iroh P2P 网络已启动`);
-        logger.info(`   节点 ID: ${this.nodeAddr}`);
-      } catch {
-        // Iroh 库未安装，使用模拟模式
-        logger.warn('⚠️ @iroh-js/client 未安装，使用模拟模式');
-        logger.warn('   安装命令: npm install @iroh-js/client');
-
-        this.nodeAddr = this.generateMockNodeId();
-        this.isRunning = true;
-
-        logger.info(`✅ Iroh 通信器（模拟模式）已启动`);
-        logger.info(`   节点 ID: ${this.nodeAddr}`);
-        return;
+      if (!Endpoint) {
+        throw new Error('Iroh Endpoint 类未找到');
       }
 
+      const builder = Endpoint.builder();
+
+      const builderAny = builder as unknown as unknown as Record<string, unknown>;
+      if (this.config.dataDir && typeof builderAny.dataDir === 'function') {
+        (builderAny.dataDir as (dir: string) => unknown)(this.config.dataDir);
+      }
+
+      if (this.config.relays.length > 0 && typeof builderAny.addRelay === 'function') {
+        for (const relay of this.config.relays) {
+          (builderAny.addRelay as (relay: string) => unknown)(relay);
+        }
+      }
+
+      if (this.config.enableNatTraversal && typeof builderAny.enableNatTraversal === 'function') {
+        (builderAny.enableNatTraversal as () => unknown)();
+      }
+
+      this.endpoint = await builder.bind();
+
+      const endpointAny = this.endpoint as unknown as Record<string, unknown>;
+      if (endpointAny.nodeId && typeof endpointAny.nodeId === 'function') {
+        const nodeIdResult = (endpointAny.nodeId as () => { toString(): string })();
+        this.nodeId = nodeIdResult.toString();
+      } else {
+        this.nodeId = this.generateNodeId();
+      }
+
+      this.setupIncomingConnectionHandler();
+
       this.isRunning = true;
-      logger.info('✅ Iroh P2P 网络已启动');
+      logger.info(`✅ Iroh P2P 网络已启动`);
+      logger.info(`   节点 ID: ${this.nodeId?.substring(0, 16) ?? 'unknown'}...`);
     } catch (error) {
       logger.error(`❌ 启动 Iroh 网络失败: ${error}`);
+      throw error;
+    }
+  }
 
-      // 回退到模拟模式
-      this.nodeAddr = this.generateMockNodeId();
-      this.isRunning = true;
+  /**
+   * 设置入站连接处理器
+   */
+  private setupIncomingConnectionHandler(): void {
+    if (!this.endpoint) return;
 
-      logger.info(`✅ Iroh 通信器（模拟模式）已启动`);
-      logger.info(`   节点 ID: ${this.nodeAddr}`);
+    const endpointAny = this.endpoint as unknown as Record<string, unknown>;
+    if (endpointAny.onIncomingConnection && typeof endpointAny.onIncomingConnection === 'function') {
+      (endpointAny.onIncomingConnection as (handler: (conn: unknown) => void) => void)(
+        async (conn: unknown) => {
+          const connAny = conn as unknown as Record<string, unknown>;
+          const remoteIdFunc = connAny.remoteNodeId as () => { toString(): string };
+          const remoteId = remoteIdFunc ? remoteIdFunc().toString() : 'unknown';
+
+          logger.info(`🔗 收到来自节点: ${remoteId.substring(0, 8)}... 的连接`);
+
+          try {
+            const openStreamFunc = connAny.openStream as (proto: string) => Promise<unknown>;
+            const stream = openStreamFunc ? await openStreamFunc('diap-v1') : null;
+
+            const connectionInfo: IrohConnection = {
+              remoteNodeId: remoteId,
+              remoteAddr: remoteId,
+              connected: true,
+              connectedAt: Date.now(),
+              lastHeartbeat: Date.now(),
+            };
+
+            this.connections.set(remoteId, {
+              raw: conn,
+              stream: stream as IrohCommunicatorStream | null,
+              info: connectionInfo,
+            });
+
+            logger.info(`✅ 已接受来自节点: ${remoteId.substring(0, 8)}... 的连接`);
+          } catch (error) {
+            logger.error(`❌ 接受连接失败: ${error}`);
+          }
+        }
+      );
     }
   }
 
@@ -202,23 +251,43 @@ export class IrohCommunicator {
     try {
       logger.info('🛑 停止 Iroh P2P 网络...');
 
-      // 停止心跳
       this.stopHeartbeatMonitor();
 
-      // 断开所有连接
-      const nodeIds = Array.from(this.connections.keys());
-      for (const nodeId of nodeIds) {
-        await this.disconnectFromNode(nodeId);
+      const closePromises: Promise<void>[] = [];
+      for (const [nodeId, entry] of this.connections) {
+        closePromises.push(
+          (async () => {
+            try {
+              if (entry.stream) {
+                const streamAny = entry.stream as unknown as unknown as Record<string, () => Promise<void>>;
+                if (streamAny.close) {
+                  await streamAny.close();
+                }
+              }
+              const connAny = entry.raw as unknown as unknown as Record<string, () => Promise<void>>;
+              if (connAny.close) {
+                await connAny.close();
+              }
+              logger.debug(`🔌 已关闭与节点 ${nodeId.substring(0, 8)}... 的连接`);
+            } catch (error) {
+              logger.warn(`关闭连接时出错: ${error}`);
+            }
+          })()
+        );
       }
 
-      // 关闭端点
-      if (this.endpoint && typeof (this.endpoint as { close?: Function }).close === 'function') {
-        (this.endpoint as { close: () => void }).close();
-      }
-
+      await Promise.all(closePromises);
       this.connections.clear();
-      this.isRunning = false;
 
+      if (this.endpoint) {
+        const endpointAny = this.endpoint as unknown as Record<string, () => Promise<void>>;
+        if (endpointAny.close) {
+          await endpointAny.close();
+        }
+        this.endpoint = null;
+      }
+
+      this.isRunning = false;
       logger.info('✅ Iroh P2P 网络已停止');
     } catch (error) {
       logger.error(`❌ 停止 Iroh 网络失败: ${error}`);
@@ -227,41 +296,30 @@ export class IrohCommunicator {
   }
 
   /**
-   * 获取节点地址
-   */
-  public getNodeAddr(): string {
-    if (this.nodeAddr) {
-      return this.nodeAddr;
-    }
-
-    if (this.endpoint) {
-      try {
-        const addr = (this.endpoint as { addr: () => { id: { toString: () => string } } }).addr();
-        return addr.id.toString();
-      } catch {
-        return this.generateMockNodeId();
-      }
-    }
-
-    return this.generateMockNodeId();
-  }
-
-  /**
    * 获取节点 ID
    */
   public getNodeId(): string {
-    return this.getNodeAddr();
+    if (!this.nodeId) {
+      throw new Error('Iroh 通信器未启动');
+    }
+    return this.nodeId;
+  }
+
+  /**
+   * 获取节点地址
+   */
+  public getNodeAddr(): string {
+    return this.getNodeId();
   }
 
   /**
    * 连接到远程节点
    */
   public async connectToNode(nodeId: string): Promise<string> {
-    if (!this.isRunning) {
+    if (!this.isRunning || !this.endpoint) {
       throw new Error('Iroh 通信器未启动');
     }
 
-    // 检查是否已连接
     if (this.connections.has(nodeId)) {
       logger.info(`🔗 已连接到节点: ${nodeId.substring(0, 8)}...`);
       return nodeId;
@@ -270,18 +328,31 @@ export class IrohCommunicator {
     try {
       logger.info(`🔗 连接到节点: ${nodeId.substring(0, 8)}...`);
 
-      // 在实际实现中，这里会建立 QUIC 连接
-      // 由于 Iroh 库的限制，这里使用模拟实现
-      const connection: IrohConnection = {
+      const endpointAny = this.endpoint as Record<string, (peerId: unknown) => Promise<unknown>>;
+      if (!endpointAny.connect) {
+        throw new Error('Endpoint.connect 方法不可用');
+      }
+
+      const peerId = this.createPeerId(nodeId);
+      const conn = await endpointAny.connect(peerId);
+      const connAny = conn as unknown as Record<string, unknown>;
+
+      const openStreamFunc = connAny.openStream as (proto: string) => Promise<unknown>;
+      const stream = openStreamFunc ? await openStreamFunc('diap-v1') : null;
+
+      const connectionInfo: IrohConnection = {
         remoteNodeId: nodeId,
         remoteAddr: nodeId,
         connected: true,
         connectedAt: Date.now(),
         lastHeartbeat: Date.now(),
-        dataHash: undefined,
       };
 
-      this.connections.set(nodeId, connection);
+      this.connections.set(nodeId, {
+        raw: conn,
+        stream: stream as IrohCommunicatorStream | null,
+        info: connectionInfo,
+      });
 
       logger.info(`✅ 已连接到节点: ${nodeId.substring(0, 8)}...`);
       return nodeId;
@@ -295,9 +366,23 @@ export class IrohCommunicator {
    * 断开与节点的连接
    */
   public async disconnectFromNode(nodeId: string): Promise<void> {
-    if (this.connections.has(nodeId)) {
-      const conn = this.connections.get(nodeId)!;
-      logger.info(`🔌 已断开与节点的连接: ${nodeId.substring(0, 8)}... (${conn.remoteAddr})`);
+    const entry = this.connections.get(nodeId);
+    if (entry) {
+      try {
+        if (entry.stream) {
+          const streamAny = entry.stream as unknown as unknown as Record<string, () => Promise<void>>;
+          if (streamAny.close) {
+            await streamAny.close();
+          }
+        }
+        const connAny = entry.raw as unknown as unknown as Record<string, () => Promise<void>>;
+        if (connAny.close) {
+          await connAny.close();
+        }
+        logger.info(`🔌 已断开与节点的连接: ${nodeId.substring(0, 8)}...`);
+      } catch (error) {
+        logger.warn(`断开连接时出错: ${error}`);
+      }
       this.connections.delete(nodeId);
     }
   }
@@ -306,28 +391,71 @@ export class IrohCommunicator {
    * 发送消息到指定节点
    */
   public async sendMessage(nodeId: string, message: IrohMessage): Promise<void> {
-    if (!this.connections.has(nodeId)) {
+    const entry = this.connections.get(nodeId);
+    if (!entry || !entry.stream) {
       throw new Error(`节点未连接: ${nodeId}`);
     }
 
     try {
-      // 序列化消息
       const messageData = JSON.stringify(message);
+      const encoder = new TextEncoder();
+      const encoded = encoder.encode(messageData);
 
-      // 计算数据哈希（模拟）
-      const dataHash = await this.computeHash(new TextEncoder().encode(messageData));
+      const lengthPrefix = new Uint8Array(4);
+      new DataView(lengthPrefix.buffer).setUint32(0, encoded.length, false);
 
-      // 更新连接信息
-      const conn = this.connections.get(nodeId)!;
-      conn.lastHeartbeat = Date.now();
-      conn.dataHash = dataHash;
+      const dataToSend = this.concatUint8Arrays(lengthPrefix, encoded);
+
+      const streamAny = entry.stream as Record<string, (data: Uint8Array) => Promise<void>>;
+      if (!streamAny.send) {
+        throw new Error('Stream.send 方法不可用');
+      }
+
+      await streamAny.send(dataToSend);
+
+      entry.info.lastHeartbeat = Date.now();
+      entry.info.dataHash = await this.computeHash(encoded);
 
       logger.debug(
-        `📤 消息已发送 (消息 ID: ${message.messageId}, 哈希: ${dataHash.substring(0, 8)}...)`
+        `📤 消息已发送 (消息 ID: ${message.messageId}, 哈希: ${entry.info.dataHash?.substring(0, 8) ?? 'unknown'}...)`
       );
     } catch (error) {
       logger.error(`❌ 发送消息失败: ${error}`);
       throw error;
+    }
+  }
+
+  /**
+   * 接收来自节点的消息
+   */
+  public async receiveMessage(nodeId: string): Promise<IrohMessage | null> {
+    const entry = this.connections.get(nodeId);
+    if (!entry || !entry.stream) {
+      return null;
+    }
+
+    try {
+      const streamAny = entry.stream as Record<string, () => Promise<Uint8Array>>;
+      if (!streamAny.receive) {
+        return null;
+      }
+
+      const lengthBytes = await streamAny.receive();
+      if (lengthBytes.length < 4) {
+        return null;
+      }
+
+      const lengthView = new DataView(lengthBytes.buffer as ArrayBuffer, lengthBytes.byteOffset, lengthBytes.byteLength);
+      const length = lengthView.getUint32(0, false);
+
+      const contentBytes = await streamAny.receive();
+      const decoder = new TextDecoder();
+      const jsonStr = decoder.decode(contentBytes.slice(0, length));
+
+      return JSON.parse(jsonStr) as IrohMessage;
+    } catch (error) {
+      logger.debug(`接收消息时出错: ${error}`);
+      return null;
     }
   }
 
@@ -404,15 +532,19 @@ export class IrohCommunicator {
    * 获取活跃连接列表
    */
   public getConnections(): Map<string, IrohConnection> {
-    return new Map(this.connections);
+    const result = new Map<string, IrohConnection>();
+    for (const [nodeId, { info }] of this.connections) {
+      result.set(nodeId, { ...info });
+    }
+    return result;
   }
 
   /**
    * 检查连接状态
    */
   public isConnected(nodeId: string): boolean {
-    const conn = this.connections.get(nodeId);
-    return conn ? conn.connected : false;
+    const entry = this.connections.get(nodeId);
+    return entry ? entry.info.connected : false;
   }
 
   /**
@@ -420,7 +552,7 @@ export class IrohCommunicator {
    */
   public getConnectionStats(): ConnectionStats {
     const total = this.connections.size;
-    const active = Array.from(this.connections.values()).filter((c) => c.connected).length;
+    const active = Array.from(this.connections.values()).filter((e) => e.info.connected).length;
 
     return {
       totalConnections: total,
@@ -438,15 +570,16 @@ export class IrohCommunicator {
 
     logger.info(`💓 启动心跳监控 (间隔: ${intervalMs}ms)`);
 
-    this.heartbeatInterval = setInterval(() => {
+    this.heartbeatInterval = setInterval(async () => {
       const heartbeat = this.createHeartbeat(fromDid);
 
-      // 广播心跳到所有连接的节点
-      for (const [nodeId, conn] of this.connections) {
-        if (conn.connected) {
-          this.sendMessage(nodeId, heartbeat).catch((error) => {
+      for (const [nodeId, { info }] of this.connections) {
+        if (info.connected) {
+          try {
+            await this.sendMessage(nodeId, heartbeat);
+          } catch (error) {
             logger.error(`发送心跳失败 (${nodeId.substring(0, 8)}...): ${error}`);
-          });
+          }
         }
       }
     }, intervalMs);
@@ -484,42 +617,68 @@ export class IrohCommunicator {
     return { ...this.config };
   }
 
-  // 私有方法
-
-  /**
-   * 生成唯一 ID
-   */
-  private generateId(): string {
-    return Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  }
-
-  /**
-   * 生成模拟节点 ID
-   */
-  private generateMockNodeId(): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    return Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  }
-
-  /**
-   * 计算哈希（模拟）
-   */
-  private async computeHash(data: Uint8Array): Promise<string> {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data as BufferSource);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-  }
-
   /**
    * 检查通信器是否在运行
    */
   public isActive(): boolean {
     return this.isRunning;
   }
+
+  private createPeerId(nodeId: string): { toBytes(): Uint8Array } {
+    return {
+      toBytes: () => {
+        if (nodeId.length === 64) {
+          const bytes = new Uint8Array(32);
+          for (let i = 0; i < 32; i++) {
+            bytes[i] = parseInt(nodeId.substr(i * 2, 2), 16);
+          }
+          return bytes;
+        }
+        throw new Error('无效的节点 ID 格式');
+      },
+    };
+  }
+
+  private generateNodeId(): string {
+    return Array.from(crypto.getRandomValues(new Uint8Array(32)))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  private generateId(): string {
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  private async computeHash(data: Uint8Array): Promise<string> {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data as BufferSource);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  private concatUint8Arrays(...arrays: Uint8Array[]): Uint8Array {
+    const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const arr of arrays) {
+      result.set(arr, offset);
+      offset += arr.length;
+    }
+    return result;
+  }
+}
+
+interface IrohCommunicatorConnection {
+  raw: unknown;
+  stream: IrohCommunicatorStream | null;
+  info: IrohConnection;
+}
+
+interface IrohCommunicatorStream {
+  send?(data: Uint8Array): Promise<void>;
+  receive?(): Promise<Uint8Array>;
+  close(): Promise<void>;
 }
 
 /**
@@ -528,8 +687,3 @@ export class IrohCommunicator {
 export function createIrohCommunicator(config?: IrohConfig): IrohCommunicator {
   return new IrohCommunicator(config);
 }
-
-// ============================================================================
-// 导出
-// ============================================================================
-// 注意: 所有类型和函数已在声明时导出
