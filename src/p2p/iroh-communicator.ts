@@ -23,96 +23,62 @@
 
 import { logger } from '../utils/logger.js';
 
-/**
- * Iroh 配置
- */
 export interface IrohConfig {
-  /** 监听地址 */
   listenAddr?: string;
-  /** 数据存储目录 */
   dataDir?: string;
-  /** 最大连接数 */
   maxConnections?: number;
-  /** 连接超时（秒） */
   connectionTimeout?: number;
-  /** 中继服务器地址列表 */
   relays?: string[];
-  /** 启用 NAT 穿透 */
   enableNatTraversal?: boolean;
 }
 
-/**
- * Iroh 消息类型
- */
 export enum IrohMessageType {
-  /** 身份验证请求 */
   AuthRequest = 'auth_request',
-  /** 身份验证响应 */
   AuthResponse = 'auth_response',
-  /** 资源请求 */
   ResourceRequest = 'resource_request',
-  /** 资源响应 */
   ResourceResponse = 'resource_response',
-  /** 心跳 */
   Heartbeat = 'heartbeat',
-  /** 自定义 */
   Custom = 'custom',
 }
 
-/**
- * Iroh 消息
- */
 export interface IrohMessage {
-  /** 消息 ID */
   messageId: string;
-  /** 消息类型 */
   messageType: IrohMessageType;
-  /** 发送者 DID */
   fromDid: string;
-  /** 接收者 DID（可选） */
   toDid?: string;
-  /** 消息内容 */
   content: string;
-  /** 时间戳 */
   timestamp: number;
-  /** 签名（可选） */
   signature?: string;
-  /** 元数据 */
   metadata: Record<string, string>;
 }
 
-/**
- * Iroh 连接信息
- */
 export interface IrohConnection {
-  /** 远程节点 ID */
   remoteNodeId: string;
-  /** 远程地址 */
   remoteAddr: string;
-  /** 连接状态 */
   connected: boolean;
-  /** 连接时间 */
   connectedAt: number;
-  /** 最后心跳时间 */
   lastHeartbeat: number;
-  /** 数据哈希（用于验证） */
   dataHash?: string;
 }
 
-/**
- * 连接统计
- */
 export interface ConnectionStats {
   totalConnections: number;
   activeConnections: number;
 }
 
-/**
- * Iroh P2P 通信器
- *
- * 基于 Iroh 实现可靠的 P2P 通信
- * 使用 QUIC 协议，支持 NAT 穿透和端到端加密
- */
+interface IrohCommunicatorConnection {
+  raw: unknown;
+  stream: IrohCommunicatorStream | null;
+  info: IrohConnection;
+}
+
+interface IrohCommunicatorStream {
+  [key: string]: any;
+  send?(data: any): Promise<void>;
+  receive?(): Promise<any>;
+  close(): Promise<void>;
+}
+
 export class IrohCommunicator {
   private config: Required<IrohConfig>;
   private endpoint: unknown = null;
@@ -140,9 +106,6 @@ export class IrohCommunicator {
     }
   }
 
-  /**
-   * 启动通信器
-   */
   public async start(): Promise<void> {
     if (this.isRunning) {
       logger.warn('⚠️ Iroh 通信器已在运行');
@@ -161,26 +124,26 @@ export class IrohCommunicator {
 
       const builder = Endpoint.builder();
 
-      const builderAny = builder as unknown as unknown as Record<string, unknown>;
+      const builderAny = builder as Record<string, any>;
       if (this.config.dataDir && typeof builderAny.dataDir === 'function') {
-        (builderAny.dataDir as (dir: string) => unknown)(this.config.dataDir);
+        builderAny.dataDir(this.config.dataDir);
       }
 
       if (this.config.relays.length > 0 && typeof builderAny.addRelay === 'function') {
         for (const relay of this.config.relays) {
-          (builderAny.addRelay as (relay: string) => unknown)(relay);
+          builderAny.addRelay(relay);
         }
       }
 
       if (this.config.enableNatTraversal && typeof builderAny.enableNatTraversal === 'function') {
-        (builderAny.enableNatTraversal as () => unknown)();
+        builderAny.enableNatTraversal();
       }
 
       this.endpoint = await builder.bind();
 
-      const endpointAny = this.endpoint as unknown as Record<string, unknown>;
+      const endpointAny = this.endpoint as Record<string, any>;
       if (endpointAny.nodeId && typeof endpointAny.nodeId === 'function') {
-        const nodeIdResult = (endpointAny.nodeId as () => { toString(): string })();
+        const nodeIdResult = endpointAny.nodeId();
         this.nodeId = nodeIdResult.toString();
       } else {
         this.nodeId = this.generateNodeId();
@@ -197,24 +160,21 @@ export class IrohCommunicator {
     }
   }
 
-  /**
-   * 设置入站连接处理器
-   */
   private setupIncomingConnectionHandler(): void {
     if (!this.endpoint) return;
 
-    const endpointAny = this.endpoint as unknown as Record<string, unknown>;
+    const endpointAny = this.endpoint as Record<string, any>;
     if (endpointAny.onIncomingConnection && typeof endpointAny.onIncomingConnection === 'function') {
-      (endpointAny.onIncomingConnection as (handler: (conn: unknown) => void) => void)(
+      endpointAny.onIncomingConnection(
         async (conn: unknown) => {
-          const connAny = conn as unknown as Record<string, unknown>;
-          const remoteIdFunc = connAny.remoteNodeId as () => { toString(): string };
+          const connAny = conn as Record<string, any>;
+          const remoteIdFunc = connAny.remoteNodeId;
           const remoteId = remoteIdFunc ? remoteIdFunc().toString() : 'unknown';
 
           logger.info(`🔗 收到来自节点: ${remoteId.substring(0, 8)}... 的连接`);
 
           try {
-            const openStreamFunc = connAny.openStream as (proto: string) => Promise<unknown>;
+            const openStreamFunc = connAny.openStream;
             const stream = openStreamFunc ? await openStreamFunc('diap-v1') : null;
 
             const connectionInfo: IrohConnection = {
@@ -240,9 +200,6 @@ export class IrohCommunicator {
     }
   }
 
-  /**
-   * 停止通信器
-   */
   public async stop(): Promise<void> {
     if (!this.isRunning) {
       return;
@@ -259,12 +216,12 @@ export class IrohCommunicator {
           (async () => {
             try {
               if (entry.stream) {
-                const streamAny = entry.stream as unknown as unknown as Record<string, () => Promise<void>>;
+                const streamAny = entry.stream as Record<string, any>;
                 if (streamAny.close) {
                   await streamAny.close();
                 }
               }
-              const connAny = entry.raw as unknown as unknown as Record<string, () => Promise<void>>;
+              const connAny = entry.raw as Record<string, any>;
               if (connAny.close) {
                 await connAny.close();
               }
@@ -280,7 +237,7 @@ export class IrohCommunicator {
       this.connections.clear();
 
       if (this.endpoint) {
-        const endpointAny = this.endpoint as unknown as Record<string, () => Promise<void>>;
+        const endpointAny = this.endpoint as Record<string, any>;
         if (endpointAny.close) {
           await endpointAny.close();
         }
@@ -295,9 +252,6 @@ export class IrohCommunicator {
     }
   }
 
-  /**
-   * 获取节点 ID
-   */
   public getNodeId(): string {
     if (!this.nodeId) {
       throw new Error('Iroh 通信器未启动');
@@ -305,16 +259,10 @@ export class IrohCommunicator {
     return this.nodeId;
   }
 
-  /**
-   * 获取节点地址
-   */
   public getNodeAddr(): string {
     return this.getNodeId();
   }
 
-  /**
-   * 连接到远程节点
-   */
   public async connectToNode(nodeId: string): Promise<string> {
     if (!this.isRunning || !this.endpoint) {
       throw new Error('Iroh 通信器未启动');
@@ -328,16 +276,16 @@ export class IrohCommunicator {
     try {
       logger.info(`🔗 连接到节点: ${nodeId.substring(0, 8)}...`);
 
-      const endpointAny = this.endpoint as Record<string, (peerId: unknown) => Promise<unknown>>;
+      const endpointAny = this.endpoint as Record<string, any>;
       if (!endpointAny.connect) {
         throw new Error('Endpoint.connect 方法不可用');
       }
 
       const peerId = this.createPeerId(nodeId);
       const conn = await endpointAny.connect(peerId);
-      const connAny = conn as unknown as Record<string, unknown>;
+      const connAny = conn as Record<string, any>;
 
-      const openStreamFunc = connAny.openStream as (proto: string) => Promise<unknown>;
+      const openStreamFunc = connAny.openStream;
       const stream = openStreamFunc ? await openStreamFunc('diap-v1') : null;
 
       const connectionInfo: IrohConnection = {
@@ -362,20 +310,17 @@ export class IrohCommunicator {
     }
   }
 
-  /**
-   * 断开与节点的连接
-   */
   public async disconnectFromNode(nodeId: string): Promise<void> {
     const entry = this.connections.get(nodeId);
     if (entry) {
       try {
         if (entry.stream) {
-          const streamAny = entry.stream as unknown as unknown as Record<string, () => Promise<void>>;
+          const streamAny = entry.stream as Record<string, any>;
           if (streamAny.close) {
             await streamAny.close();
           }
         }
-        const connAny = entry.raw as unknown as unknown as Record<string, () => Promise<void>>;
+        const connAny = entry.raw as Record<string, any>;
         if (connAny.close) {
           await connAny.close();
         }
@@ -387,9 +332,6 @@ export class IrohCommunicator {
     }
   }
 
-  /**
-   * 发送消息到指定节点
-   */
   public async sendMessage(nodeId: string, message: IrohMessage): Promise<void> {
     const entry = this.connections.get(nodeId);
     if (!entry || !entry.stream) {
@@ -406,7 +348,7 @@ export class IrohCommunicator {
 
       const dataToSend = this.concatUint8Arrays(lengthPrefix, encoded);
 
-      const streamAny = entry.stream as Record<string, (data: Uint8Array) => Promise<void>>;
+      const streamAny = entry.stream as Record<string, any>;
       if (!streamAny.send) {
         throw new Error('Stream.send 方法不可用');
       }
@@ -425,9 +367,6 @@ export class IrohCommunicator {
     }
   }
 
-  /**
-   * 接收来自节点的消息
-   */
   public async receiveMessage(nodeId: string): Promise<IrohMessage | null> {
     const entry = this.connections.get(nodeId);
     if (!entry || !entry.stream) {
@@ -435,7 +374,7 @@ export class IrohCommunicator {
     }
 
     try {
-      const streamAny = entry.stream as Record<string, () => Promise<Uint8Array>>;
+      const streamAny = entry.stream as Record<string, any>;
       if (!streamAny.receive) {
         return null;
       }
@@ -459,9 +398,6 @@ export class IrohCommunicator {
     }
   }
 
-  /**
-   * 创建认证请求消息
-   */
   public createAuthRequest(fromDid: string, toDid: string, challenge: string): IrohMessage {
     return {
       messageId: this.generateId(),
@@ -470,14 +406,10 @@ export class IrohCommunicator {
       toDid,
       content: `认证请求：${challenge}`,
       timestamp: Date.now(),
-      signature: undefined,
       metadata: { challenge },
     };
   }
 
-  /**
-   * 创建认证响应消息
-   */
   public createAuthResponse(fromDid: string, toDid: string, response: string): IrohMessage {
     return {
       messageId: this.generateId(),
@@ -486,30 +418,21 @@ export class IrohCommunicator {
       toDid,
       content: `认证响应：${response}`,
       timestamp: Date.now(),
-      signature: undefined,
       metadata: { response },
     };
   }
 
-  /**
-   * 创建心跳消息
-   */
   public createHeartbeat(fromDid: string): IrohMessage {
     return {
       messageId: this.generateId(),
       messageType: IrohMessageType.Heartbeat,
       fromDid,
-      toDid: undefined,
       content: '心跳',
       timestamp: Date.now(),
-      signature: undefined,
       metadata: {},
     };
   }
 
-  /**
-   * 创建自定义消息
-   */
   public createCustomMessage(
     fromDid: string,
     toDid: string | undefined,
@@ -523,14 +446,10 @@ export class IrohCommunicator {
       toDid,
       content,
       timestamp: Date.now(),
-      signature: undefined,
       metadata: { customType: messageType },
     };
   }
 
-  /**
-   * 获取活跃连接列表
-   */
   public getConnections(): Map<string, IrohConnection> {
     const result = new Map<string, IrohConnection>();
     for (const [nodeId, { info }] of this.connections) {
@@ -539,30 +458,20 @@ export class IrohCommunicator {
     return result;
   }
 
-  /**
-   * 检查连接状态
-   */
   public isConnected(nodeId: string): boolean {
     const entry = this.connections.get(nodeId);
     return entry ? entry.info.connected : false;
   }
 
-  /**
-   * 获取连接统计
-   */
   public getConnectionStats(): ConnectionStats {
     const total = this.connections.size;
     const active = Array.from(this.connections.values()).filter((e) => e.info.connected).length;
-
     return {
       totalConnections: total,
       activeConnections: active,
     };
   }
 
-  /**
-   * 启动心跳监控
-   */
   public startHeartbeatMonitor(fromDid: string, intervalMs: number = 30000): void {
     if (this.heartbeatInterval) {
       this.stopHeartbeatMonitor();
@@ -585,9 +494,6 @@ export class IrohCommunicator {
     }, intervalMs);
   }
 
-  /**
-   * 停止心跳监控
-   */
   public stopHeartbeatMonitor(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
@@ -596,30 +502,18 @@ export class IrohCommunicator {
     }
   }
 
-  /**
-   * 获取已连接的节点列表
-   */
   public getConnectedNodes(): string[] {
     return Array.from(this.connections.keys());
   }
 
-  /**
-   * 检查节点是否已连接
-   */
   public isNodeConnected(nodeId: string): boolean {
     return this.connections.has(nodeId);
   }
 
-  /**
-   * 获取配置
-   */
   public getConfig(): IrohConfig {
     return { ...this.config };
   }
 
-  /**
-   * 检查通信器是否在运行
-   */
   public isActive(): boolean {
     return this.isRunning;
   }
@@ -669,21 +563,6 @@ export class IrohCommunicator {
   }
 }
 
-interface IrohCommunicatorConnection {
-  raw: unknown;
-  stream: IrohCommunicatorStream | null;
-  info: IrohConnection;
-}
-
-interface IrohCommunicatorStream {
-  send?(data: Uint8Array): Promise<void>;
-  receive?(): Promise<Uint8Array>;
-  close(): Promise<void>;
-}
-
-/**
- * 创建 Iroh 通信器
- */
 export function createIrohCommunicator(config?: IrohConfig): IrohCommunicator {
   return new IrohCommunicator(config);
 }
