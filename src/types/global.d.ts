@@ -96,7 +96,7 @@ declare module 'libp2p' {
     isStarted(): boolean;
     services?: any;
     peerId?: any;
-    addEventListener(event: string, handler: any): void;
+    addEventListener(event: string, handler: (evt: any) => void): void;
     removeEventListener(event: string, handler: any): void;
     getMultiaddrs(): any[];
   }
