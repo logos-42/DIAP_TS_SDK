@@ -88,7 +88,7 @@ export { IrohCommunicator, createIrohCommunicator } from './p2p/iroh-communicato
 export type {
   IrohConfig,
   IrohMessage,
-  IrohConnection,
+  IrohConnectionInfo as IrohConnection,
   ConnectionStats,
   IrohMessageType,
 } from './p2p/iroh-communicator.js';
