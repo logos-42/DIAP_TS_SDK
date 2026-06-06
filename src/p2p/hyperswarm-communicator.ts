@@ -147,6 +147,10 @@ export class HyperswarmCommunicator {
   private config: Required<HyperswarmConfig>;
   private swarm: unknown | null = null;
   private connections: Map<string, P2PConnection> = new Map();
+  /** Underlying noise/UTP socket per connection, keyed by the same id used in `connections`. */
+  private streams: Map<string, NodeJS.ReadWriteStream> = new Map();
+  /** 标记调用方希望连接、但还没在 `connection` 事件里出现的公钥。 */
+  private wantedPeers: Set<string> = new Set();
   private topics: Set<string> = new Set();
   private isRunning: boolean = false;
   private eventHandlers: Map<string, Set<Function>> = new Map();
@@ -185,11 +189,16 @@ export class HyperswarmCommunicator {
 
       // 动态导入 Hyperswarm
       const Hyperswarm = (await import('hyperswarm')).default;
-      this.swarm = new Hyperswarm({
+      const swarmOpts = {
         maxConnections: this.config.maxConnections,
         multiplex: this.config.multiplex,
-        seed: this.config.seed,
-      });
+      };
+      // 只有非空 seed 才传 — 空数组会让 sodium-native 断言失败
+      // （hyperswarm 把 `seed: []` 当成"有 seed"走 `crypto_sign_seed_keypair`）
+      if (this.config.seed && this.config.seed.length > 0) {
+        (swarmOpts as { seed?: Buffer[] }).seed = this.config.seed;
+      }
+      this.swarm = new Hyperswarm(swarmOpts);
 
       // 设置连接处理
       this.setupConnectionHandlers();
@@ -224,6 +233,8 @@ export class HyperswarmCommunicator {
       }
 
       this.connections.clear();
+      this.streams.clear();
+      this.wantedPeers.clear();
       this.topics.clear();
       this.isRunning = false;
 
@@ -257,19 +268,39 @@ export class HyperswarmCommunicator {
       const topicBuffer =
         typeof topic === 'string' ? Buffer.from(topic, 'hex').slice(0, 32) : topic.slice(0, 32);
 
-      // 加入主题
-      const discovery = (
-        this.swarm as { join: (topic: Buffer, opts: object) => { update: () => void } }
+      // 加入主题（hyperswarm 4.x 的 join() 返回 PeerDiscoverySession）
+      const session = (
+        this.swarm as {
+          join: (topic: Buffer, opts: object) => {
+            refresh: (opts?: object) => Promise<void>;
+            flushed: () => Promise<void>;
+            destroy: () => Promise<void>;
+          };
+        }
       ).join(topicBuffer, {
         server: this.config.server,
         client: this.config.client,
       });
 
-      // 更新 discovery
-      discovery.update();
+      // 触发一次 refresh，让 DHT 立刻开始查找
+      try {
+        await session.refresh({
+          server: this.config.server,
+          client: this.config.client,
+        });
+      } catch (e) {
+        logger.warn(`⚠️ topic refresh 失败: ${e}`);
+      }
 
       this.topics.add(topicHex);
       this.emit('topic', topicBuffer);
+
+      // 等待 DHT 真正把本机宣布到这个主题，避免调用方立刻 connect 拿不到对端
+      try {
+        await session.flushed();
+      } catch (e) {
+        logger.warn(`⚠️ topic flushed 失败: ${e}`);
+      }
 
       logger.info(`✅ 已加入主题: ${topicHex.substring(0, 8)}...`);
     } catch (error) {
@@ -306,50 +337,32 @@ export class HyperswarmCommunicator {
   }
 
   /**
-   * 连接到节点
+   * 标记希望连接到指定公钥的节点
+   *
+   * Hyperswarm 本身没有 `swarm.connect(publicKey)` 这种按公钥直连的 API；
+   * 对等节点是通过 `joinTopic` 进入 DHT 发现得到的。真正的 `P2PConnection`
+   * 会在 `connection` 事件里产生并放入 `this.connections` / `this.streams`。
+   *
+   * 这里做两件事：
+   *   1) 如果已经建立连接，直接返回；
+   *   2) 否则记录到一个“想要连接”的集合里，等发现流程命中时复用。
    */
-  public async connect(publicKey: Buffer | string): Promise<P2PConnection> {
+  public async connect(publicKey: Buffer | string): Promise<P2PConnection | null> {
     if (!this.isRunning || !this.swarm) {
       throw new Error('P2P 网络未启动');
     }
 
     const keyHex = typeof publicKey === 'string' ? publicKey : publicKey.toString('hex');
 
-    // 检查是否已连接
+    // 已经连上了就直接返回
     const existing = this.connections.get(keyHex);
     if (existing) {
       return existing;
     }
 
-    try {
-      logger.info(`🔌 连接到节点: ${keyHex.substring(0, 8)}...`);
-
-      // 连接到对等节点
-      const peer = (this.swarm as { connect: (key: Buffer) => { on: Function } }).connect(
-        typeof publicKey === 'string' ? Buffer.from(publicKey, 'hex') : publicKey
-      );
-
-      // 创建连接对象
-      const conn: P2PConnection = {
-        id: this.generateId(),
-        publicKey: keyHex,
-        isInbound: false,
-        connectedAt: Date.now(),
-        lastActivity: Date.now(),
-        bytesSent: 0,
-        bytesReceived: 0,
-      };
-
-      this.connections.set(keyHex, conn);
-      this.setupStreamHandlers(peer, conn);
-
-      logger.info(`✅ 已连接到节点: ${keyHex.substring(0, 8)}...`);
-
-      return conn;
-    } catch (error) {
-      logger.error(`❌ 连接失败: ${error}`);
-      throw error;
-    }
+    this.wantedPeers.add(keyHex);
+    logger.info(`🔌 标记想要连接节点: ${keyHex.substring(0, 8)}...（等待 joinTopic 后 DHT 发现）`);
+    return null;
   }
 
   /**
@@ -363,6 +376,7 @@ export class HyperswarmCommunicator {
 
     try {
       this.connections.delete(connectionId);
+      this.streams.delete(connectionId);
       logger.info(`🔌 已关闭连接: ${connectionId.substring(0, 8)}...`);
     } catch (error) {
       logger.error(`❌ 关闭连接失败: ${error}`);
@@ -378,10 +392,17 @@ export class HyperswarmCommunicator {
       throw new Error('连接不存在');
     }
 
+    const stream = this.streams.get(connectionId);
+    if (!stream) {
+      throw new Error(`连接 ${connectionId} 关联的流不存在`);
+    }
+
     const dataBuffer = typeof data === 'string' ? Buffer.from(data) : Buffer.from(data);
 
     try {
-      // 在实际实现中，这里会将数据写入流
+      // 真正写入底层 noise/UTP 套接字
+      stream.write(dataBuffer);
+
       conn.bytesSent += dataBuffer.length;
       conn.lastActivity = Date.now();
 
@@ -489,13 +510,24 @@ export class HyperswarmCommunicator {
 
     (this.swarm as { on: (event: string, callback: Function) => void }).on(
       'connection',
-      (conn: unknown, info: { publicKey: Buffer }) => {
+      (conn: unknown, info: { publicKey: Buffer; client?: boolean }) => {
         const publicKey = info.publicKey.toString('hex');
+
+        // `peerInfo.client === true` ⇒ 本机是 dialer，否则本机是 acceptor
+        const isInbound = info.client !== true;
+
+        // Hyperswarm 会去重双向连接，但出于健壮性考虑，如果已存在就替换旧 socket
+        const existing = this.connections.get(publicKey);
+        if (existing) {
+          logger.warn(`⚠️ 重复收到 ${publicKey.substring(0, 8)}... 的连接事件，替换旧 socket`);
+          this.connections.delete(publicKey);
+          this.streams.delete(publicKey);
+        }
 
         const p2pConn: P2PConnection = {
           id: this.generateId(),
           publicKey,
-          isInbound: true,
+          isInbound,
           connectedAt: Date.now(),
           lastActivity: Date.now(),
           bytesSent: 0,
@@ -503,9 +535,15 @@ export class HyperswarmCommunicator {
         };
 
         this.connections.set(publicKey, p2pConn);
+        this.streams.set(publicKey, conn as NodeJS.ReadWriteStream);
         this.setupStreamHandlers(conn, p2pConn);
 
-        logger.info(`🔗 新连接: ${publicKey.substring(0, 8)}...`);
+        // 如果是有人调用过 `connect(publicKey)` 等的就是这条，清理待连接集合
+        this.wantedPeers.delete(publicKey);
+
+        logger.info(
+          `🔗 新连接 (${isInbound ? '入站' : '出站'}): ${publicKey.substring(0, 8)}...`
+        );
         this.emit('connection', p2pConn, info);
       }
     );
@@ -544,11 +582,13 @@ export class HyperswarmCommunicator {
       logger.error(`❌ 连接错误: ${error}`);
       this.emit('error', error);
       this.connections.delete(conn.publicKey);
+      this.streams.delete(conn.publicKey);
     });
 
     nodeStream.on('close', () => {
       logger.info(`🔌 连接关闭: ${conn.publicKey.substring(0, 8)}...`);
       this.connections.delete(conn.publicKey);
+      this.streams.delete(conn.publicKey);
     });
   }
 
