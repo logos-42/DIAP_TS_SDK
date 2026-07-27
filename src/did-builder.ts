@@ -19,7 +19,8 @@ import { encryptPeerId } from './libp2p/encrypted-peer-id.js';
 import { logger } from './utils/logger.js';
 import { sha256, sha512 } from '@noble/hashes/sha2.js';
 import { blake2b, blake2s } from '@noble/hashes/blake2.js';
-import { IpfsMultiPublisher, createMultiPublisher, isKuboInstalled, startLocalKubo } from './ipfs-multi-publisher.js';
+import { IpfsMultiPublisher, createMultiPublisher, isKuboInstalled } from './ipfs-multi-publisher.js';
+import { startLocalKubo } from './ipfs-setup.js';
 
 /**
  * DID 构建器
@@ -192,32 +193,39 @@ export class DIDBuilder {
       logger.info(`  CID: ${uploadResult.cid}`);
 
       logger.info('步骤4: 发布DID到IPNS（多节点并行）');
-      const keyName = `did-${keypair.did.replace(':', '-').replace(' ', '')}`;
-      try {
-        // 尝试启动本地 IPFS 节点（如果可用）
-        const kuboAvailable = await isKuboInstalled();
-        if (kuboAvailable) {
-          logger.info('检测到本地 Kubo，尝试启动守护进程...');
-          await startLocalKubo();
-        }
 
-        // 使用多节点发布器
-        const publisher = await createMultiPublisher(keyName);
-        const multiResult = await publisher.publishMultiNode(uploadResult.cid);
+      // 内存 CID 无法在真实 Kubo 上发布，直接跳过
+      if (uploadResult.cid.startsWith('mem-')) {
+        logger.info('  ℹ️ 内存模式 CID，跳过 IPNS 发布（仅使用 CID）');
+      } else {
+        const keyName = `did-${keypair.did.replace(':', '-').replace(' ', '')}`;
+        try {
+          // 尝试启动本地 IPFS 节点（如果可用）
+          const kuboAvailable = await isKuboInstalled();
+          if (kuboAvailable) {
+            logger.info('检测到本地 Kubo，尝试启动守护进程...');
+            await startLocalKubo();
+          }
 
-        if (multiResult.success) {
-          logger.info('✓ IPNS多节点发布成功');
-          logger.info(`  IPNS名称: ${multiResult.ipnsName || 'N/A'}`);
-          logger.info(`  成功节点: ${multiResult.publishedNodes.length}`);
-          logger.info(`  失败节点: ${multiResult.failedNodes.length}`);
-          logger.info(`  总耗时: ${multiResult.totalTimeMs}ms`);
-        } else {
-          logger.warn('⚠️ 所有节点IPNS发布失败，尝试单节点发布...');
-          const ipnsResult = await this.ipfsClient.publishAfterUpload(uploadResult.cid, keyName);
-          logger.info('✓ IPNS备用发布成功');
+          // 使用本地节点发布器
+          const publisher = await createMultiPublisher(keyName);
+          const multiResult = await publisher.publishMultiNode(uploadResult.cid);
+
+          if (multiResult.success) {
+            logger.info('✓ IPNS 发布成功');
+            logger.info(`  IPNS名称: ${multiResult.ipnsName || 'N/A'}`);
+          } else {
+            logger.warn('⚠️ IPNS 发布失败，尝试备用发布...');
+            try {
+              const ipnsResult = await this.ipfsClient.publishAfterUpload(uploadResult.cid, keyName);
+              logger.info('✓ IPNS 备用发布成功');
+            } catch {
+              logger.warn('⚠️ 备用发布也失败，仅使用 CID');
+            }
+          }
+        } catch (error) {
+          logger.warn('⚠️ IPNS发布失败，将仅使用CID', { error });
         }
-      } catch (error) {
-        logger.warn('⚠️ IPNS发布失败，将仅使用CID', { error });
       }
 
       logger.info('✅ DID发布成功');

@@ -11,6 +11,7 @@ export { KeyManager } from './key-manager.js';
 
 // IPFS 客户端
 export { IpfsClient } from './ipfs-client.js';
+export { MemoryIpfsClient } from './memory-ipfs-client.js';
 export type {
   IpfsUploadResult,
   IpnsPublishResult,
@@ -21,6 +22,14 @@ export type {
 // IPFS 节点管理器
 export { IpfsNodeManager } from './ipfs-node-manager.js';
 export type { IpfsNodeConfig, IpfsNodeInfo, IpfsNodeStatus } from './ipfs-node-manager.js';
+
+// IPFS 设置引导
+export {
+  checkKuboSetup,
+  startLocalKubo,
+  ensureLocalIpfsNode,
+} from './ipfs-setup.js';
+export type { KuboSetupResult } from './ipfs-setup.js';
 
 // IPNS 管理器
 export { IpnsManager } from './ipns-manager.js';
@@ -173,7 +182,6 @@ export {
   createWeb3StoragePublisher,
   createCustomPublisher,
   isKuboInstalled,
-  startLocalKubo,
 } from './ipfs-multi-publisher.js';
 export type {
   MultiNodePublishResult,

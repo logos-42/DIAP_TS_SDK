@@ -27,11 +27,8 @@ export interface GatewayCredentials {
   web3Storage?: { token: string };
 }
 
-const PUBLIC_IPFS_NODES: IpfsNodeConfig[] = [
-  { apiUrl: 'https://ipfs.io/api/v0', gatewayUrl: 'https://ipfs.io', isLocal: false },
-  { apiUrl: 'https://dweb.link/api/v0', gatewayUrl: 'https://dweb.link', isLocal: false },
-  { apiUrl: 'https://cloudflare-ipfs.com/api/v0', gatewayUrl: 'https://cloudflare-ipfs.com', isLocal: false },
-];
+// 不再使用公共 IPFS 节点（Kubo RPC 已被关闭）
+// IPNS 发布只依赖用户本地的 Kubo 节点
 
 function buildAuthHeader(credentials: GatewayCredentials): Record<string, string> | undefined {
   if (credentials.pinata) {
@@ -57,7 +54,7 @@ export class IpfsMultiPublisher {
   constructor(keyName: string, localNode?: IpfsNodeConfig, remoteNodes?: IpfsNodeConfig[]) {
     this.keyName = keyName;
     this.localNode = localNode || null;
-    this.remoteNodes = remoteNodes || PUBLIC_IPFS_NODES;
+    this.remoteNodes = remoteNodes || [];
   }
 
   /**
@@ -160,37 +157,36 @@ export class IpfsMultiPublisher {
     const failedNodes: string[] = [];
     let ipnsName: string | undefined;
 
-    const nodesToTry: IpfsNodeConfig[] = [];
-    if (this.localNode) {
-      nodesToTry.push(this.localNode);
+    if (!this.localNode) {
+      logger.info('⚠️ 没有可用的本地 IPFS 节点，跳过 IPNS 发布（仅使用 CID）');
+      return {
+        success: false,
+        cid,
+        publishedNodes: [],
+        failedNodes: [],
+        totalTimeMs: Date.now() - startTime,
+      };
     }
-    nodesToTry.push(...this.remoteNodes);
 
-    logger.info(`开始多节点 IPNS 发布，CID: ${cid}`);
-    logger.info(`将尝试 ${nodesToTry.length} 个节点`);
+    logger.info(`开始发布 IPNS（仅本地节点）`);
+    logger.info(`  本地节点: ${this.localNode.apiUrl}`);
 
-    const publishPromises = nodesToTry.map(async (node) => {
-      try {
-        const result = await this.publishToNode(node, cid);
-        publishedNodes.push(node.apiUrl);
-        if (result && result.Name && !ipnsName) {
-          ipnsName = result.Name;
-        }
-        logger.info(`节点发布成功: ${node.apiUrl}`);
-      } catch (error) {
-        failedNodes.push(node.apiUrl);
-        logger.warn(`节点发布失败: ${node.apiUrl} - ${error}`);
+    try {
+      const result = await this.publishToNode(this.localNode, cid);
+      publishedNodes.push(this.localNode.apiUrl);
+      if (result && result.Name) {
+        ipnsName = result.Name;
       }
-    });
-
-    await Promise.allSettled(publishPromises);
+      logger.info(`✅ 本地 IPNS 发布成功: ${ipnsName || 'N/A'}`);
+    } catch (error) {
+      failedNodes.push(this.localNode.apiUrl);
+      logger.warn(`⚠️ 本地 IPNS 发布失败: ${error}`);
+    }
 
     const totalTimeMs = Date.now() - startTime;
     const success = publishedNodes.length > 0;
 
-    logger.info(`多节点发布完成`);
-    logger.info(`成功: ${publishedNodes.length}/${nodesToTry.length}`);
-    logger.info(`耗时: ${totalTimeMs}ms`);
+    logger.info(`  结果: ${success ? '✅ 成功' : '❌ 失败'} (${totalTimeMs}ms)`);
 
     return {
       success,
@@ -312,9 +308,9 @@ export async function createMultiPublisher(keyName: string): Promise<IpfsMultiPu
       gatewayUrl: 'http://localhost:8080',
       isLocal: true,
     };
-    logger.info('使用本地 IPFS 节点进行发布');
+    logger.info('✅ 检测到本地 Kubo 节点，将用于 IPNS 发布');
   } else {
-    logger.info('本地 IPFS 节点不可用，将使用远程节点');
+    logger.info('ℹ️ 本地 Kubo 节点不可用，跳过 IPNS 发布（仅使用 CID）');
   }
 
   const publisher = new IpfsMultiPublisher(keyName, localNode);
