@@ -195,6 +195,19 @@ npm run format
 
 MIT License
 
+## 更新日志
+
+### v0.2.1 (2026-07-28)
+
+- **修复**: `HyperswarmConfig.seed` 类型从 `Buffer[]` 改为 `Buffer | Uint8Array`，匹配 hyperswarm 4.x 实际期望的 32 字节单值
+- **修复**: `global.d.ts` 中 `join()` 返回类型从 `{ update: () => void }` 更正为 `{ refresh(), flushed(), destroy() }`，匹配 hyperswarm 4.x `PeerDiscoverySession` API
+- **移除**: 移除 `global.d.ts` 中不存在的 `connect()` 方法声明，hyperswarm 4.x 没有该 API
+- **兼容**: `seed` 内部处理逻辑从传递数组改为传递单值给 Hyperswarm 构造器
+
+### v0.2.0
+
+- 初始发布
+
 ## 链接
 
 - [Rust SDK](https://github.com/logos-42/DIAP_TS_SDK)

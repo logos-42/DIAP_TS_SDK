@@ -270,12 +270,12 @@ declare module '@iroh-js/client' {
 declare module 'hyperswarm' {
   export default class Hyperswarm {
     constructor(options?: Record<string, unknown>);
-    join(topic: Buffer, options?: Record<string, unknown>): { update: () => void };
-    leave(topic: Buffer): void;
-    connect(peerKey: Buffer): {
-      on: (event: string, cb: (conn: unknown, info: unknown) => void) => void;
-      write: (data: Buffer) => void;
+    join(topic: Buffer, options?: Record<string, unknown>): {
+      refresh: (opts?: { server?: boolean; client?: boolean }) => Promise<void>;
+      flushed: () => Promise<void>;
+      destroy: () => Promise<void>;
     };
+    leave(topic: Buffer): void;
     destroy(): void;
     on(event: string, callback: (conn: unknown, info: unknown) => void): void;
   }

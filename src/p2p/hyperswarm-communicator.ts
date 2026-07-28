@@ -51,8 +51,8 @@ export interface HyperswarmConfig {
   autoConnect?: boolean;
   /** 最大连接数 */
   maxConnections?: number;
-  /** 种子节点 */
-  seed?: Buffer[];
+  /** 种子节点（单个 32 字节密钥用于确定性 keypair） */
+  seed?: Buffer | Uint8Array;
   /** 启用多路复用 */
   multiplex?: boolean;
 }
@@ -144,7 +144,7 @@ export interface HyperswarmEvents {
  * 专注于快速节点发现和加密连接
  */
 export class HyperswarmCommunicator {
-  private config: Required<HyperswarmConfig>;
+  private config: Required<Omit<HyperswarmConfig, 'seed'>> & { seed?: Buffer | Uint8Array };
   private swarm: unknown | null = null;
   private connections: Map<string, P2PConnection> = new Map();
   /** Underlying noise/UTP socket per connection, keyed by the same id used in `connections`. */
@@ -165,7 +165,7 @@ export class HyperswarmCommunicator {
       client: config?.client ?? true,
       autoConnect: config?.autoConnect ?? true,
       maxConnections: config?.maxConnections ?? 100,
-      seed: config?.seed ?? [],
+      seed: config?.seed,
       multiplex: config?.multiplex ?? true,
     };
 
@@ -193,10 +193,9 @@ export class HyperswarmCommunicator {
         maxConnections: this.config.maxConnections,
         multiplex: this.config.multiplex,
       };
-      // 只有非空 seed 才传 — 空数组会让 sodium-native 断言失败
-      // （hyperswarm 把 `seed: []` 当成"有 seed"走 `crypto_sign_seed_keypair`）
-      if (this.config.seed && this.config.seed.length > 0) {
-        (swarmOpts as { seed?: Buffer[] }).seed = this.config.seed;
+      // 非空 seed 才传 — 空值/空 Buffer 会让 hyperswarm 断言失败
+      if (this.config.seed) {
+        (swarmOpts as { seed?: Buffer | Uint8Array }).seed = this.config.seed;
       }
       this.swarm = new Hyperswarm(swarmOpts);
 
