@@ -11,7 +11,7 @@
 import { logger } from './utils/logger.js';
 
 // 默认 Kubo 版本（可以覆盖）
-const DEFAULT_KUBO_VERSION = 'v0.28.0';
+const DEFAULT_KUBO_VERSION = 'v0.43.0';
 
 export interface KuboSetupResult {
   /** 是否就绪 */
@@ -126,11 +126,29 @@ async function checkDaemon(): Promise<{ running: boolean; apiUrl: string; gatewa
 // ============================================================================
 
 /**
- * 获取最新 Kubo 版本号（简化版：用默认版本）
+ * 获取最新 Kubo 版本号：优先查 dist.ipfs.tech 的版本列表取最新稳定版，
+ * 查不到再退回固定版本 (避免长时间落后上游)。
  */
 async function getKuboVersion(): Promise<string> {
-  // 可以用 https://dist.ipfs.tech/kubo/versions 获取最新版
-  // 但为了稳定，先用固定版本
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const resp = await fetch('https://dist.ipfs.tech/kubo/versions', { signal: ctrl.signal });
+    clearTimeout(t);
+    if (resp.ok) {
+      const text = await resp.text();
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      // 只取正式版 (vX.Y.Z, 无 rc/beta/dev)
+      const stable = lines.filter(l => /^v\d+\.\d+\.\d+$/.test(l));
+      if (stable.length > 0) {
+        const latest = stable[stable.length - 1];
+        logger.info(`  Kubo 最新稳定版: ${latest} (本地默认 ${DEFAULT_KUBO_VERSION})`);
+        return latest;
+      }
+    }
+  } catch {
+    // 网络失败 → 退回固定版本
+  }
   return DEFAULT_KUBO_VERSION;
 }
 
