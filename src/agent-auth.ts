@@ -138,6 +138,15 @@ export class AgentAuthManager {
   }
 
   /**
+   * 2026-08-09: 设置归属的用户 DID — 子智能体身份归属用户唯一身份.
+   * 之后的 registerAgent 生成的 DID 文档会带 controller + alsoKnownAs 指向用户 DID.
+   */
+  setOwnerDid(ownerDid: string): this {
+    (this.identityManager as any).setOwnerDid?.(ownerDid);
+    return this;
+  }
+
+  /**
    * 生成证明
    */
   async generateProof(keypair: KeyPair, cid: string): Promise<AuthResult> {

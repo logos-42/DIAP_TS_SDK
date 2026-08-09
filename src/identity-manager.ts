@@ -80,6 +80,15 @@ export class IdentityManager {
   }
 
   /**
+   * 2026-08-09: 设置归属的用户 DID — 子智能体身份归属用户唯一身份.
+   * 之后的 registerIdentity 生成的 DID 文档会带 controller + alsoKnownAs.
+   */
+  setOwnerDid(ownerDid: string): this {
+    this.didBuilder.setOwnerDid(ownerDid);
+    return this;
+  }
+
+  /**
    * 添加服务
    */
   addService(serviceType: string, endpoint: any): this {

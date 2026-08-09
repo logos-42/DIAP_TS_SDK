@@ -18,6 +18,16 @@ export interface DIDDocument {
   service?: Service[];
   /** 创建时间 (ISO 8601) */
   created: string;
+  /**
+   * 2026-08-09: 文档级 controller — 声明谁控制这个 DID (归属关系).
+   * 子智能体身份 = 用户 DID (agent DID 文档声明由用户 DID 控制).
+   */
+  controller?: string;
+  /**
+   * 2026-08-09: alsoKnownAs — 声明别名/归属, W3C DID 标准字段.
+   * 子智能体 DID 可声明 alsoKnownAs: [用户 DID] 表示"我是这个用户的智能体".
+   */
+  alsoKnownAs?: string[];
 }
 
 /**

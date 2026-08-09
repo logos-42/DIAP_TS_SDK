@@ -27,8 +27,27 @@ import { startLocalKubo } from './ipfs-setup.js';
  */
 export class DIDBuilder {
   private services: Service[] = [];
+  /**
+   * 2026-08-09: 归属的用户 DID (owner). 设置后 DID 文档会带 controller + alsoKnownAs,
+   * 声明"这个 DID 由用户 DID 控制/归属" — 子智能体身份归属用户唯一身份.
+   */
+  private ownerDid: string = '';
 
   constructor(private ipfsClient: IpfsClient) {}
+
+  /**
+   * 2026-08-09: 设置归属的用户 DID — 子智能体身份归属用户唯一身份.
+   * 会写入 DID 文档的 controller + alsoKnownAs 字段.
+   */
+  setOwnerDid(ownerDid: string): this {
+    this.ownerDid = ownerDid || '';
+    return this;
+  }
+
+  /** 获取当前归属 DID (可能为空) */
+  getOwnerDid(): string {
+    return this.ownerDid;
+  }
 
   /**
    * 添加服务端点
@@ -99,6 +118,11 @@ export class DIDBuilder {
       authentication: [`${keypair.did}#key-1`],
       service: allServices,
       created: new Date().toISOString(),
+      // 2026-08-09: 归属用户 DID — 子智能体身份归属用户唯一身份
+      ...(this.ownerDid ? {
+        controller: this.ownerDid,
+        alsoKnownAs: [this.ownerDid],
+      } : {}),
     };
 
     return didDoc;
@@ -149,6 +173,11 @@ export class DIDBuilder {
       authentication: [`${keypair.did}#key-1`],
       service: allServices,
       created: new Date().toISOString(),
+      // 2026-08-09: 归属用户 DID — 子智能体身份归属用户唯一身份
+      ...(this.ownerDid ? {
+        controller: this.ownerDid,
+        alsoKnownAs: [this.ownerDid],
+      } : {}),
     };
 
     return didDoc;
