@@ -1,6 +1,6 @@
 {
   "name": "@diap/sdk",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "DIAP TypeScript SDK - Decentralized Intelligent Agent Protocol",
   "type": "module",
   "main": "dist/index.js",
@@ -45,7 +45,6 @@
     "@number0/iroh": "^0.35.0",
     "bs58": "^6.0.0",
     "hyperswarm": "^4.17.0",
-    "node-fetch": "^3.3.2",
     "snarkjs": "^0.7.6",
     "winston": "^3.19.0"
   },
